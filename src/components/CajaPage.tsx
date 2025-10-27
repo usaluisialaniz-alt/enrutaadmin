@@ -1,45 +1,70 @@
-// src/pages/CajaPage.tsx (Con Date Picker)
+// src/pages/CajaPage.tsx (Con Date Picker Funcional)
 
 import React, { useState, useEffect } from 'react';
-import { Wallet, DollarSign, TrendingUp, Calendar as CalendarIcon, Loader2, RefreshCw } from 'lucide-react'; // Renombrado Calendar a CalendarIcon
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Wallet, DollarSign, TrendingUp, Calendar as CalendarIcon, Loader2, RefreshCw } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'; // Ajusta rutas si es necesario
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-// Nuevas importaciones para Date Picker
+// Importaciones para Date Picker
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar"; // El componente de Shadcn
-import { format } from "date-fns"; // Para formatear fechas
-import { es } from 'date-fns/locale'; // Para formato español
+import { Calendar } from "@/components/ui/calendar";
+import { format } from "date-fns";
+import { es } from 'date-fns/locale';
 
-// --- Tipos de Datos (Sin cambios) ---
-interface Transaccion { /* ... */ }
-interface TotalesCaja { /* ... */ }
-interface CajaData { /* ... */ }
+// --- Tipos de Datos ---
+interface Transaccion {
+  id: string;
+  hora: string;
+  chofer: string;
+  tipo: 'pago' | 'gasto';
+  metodo?: string;
+  concepto?: string;
+  monto: number;
+}
+interface TotalesCaja {
+    efectivo: number;
+    transferencia: number;
+    mercadoPago: number;
+    gastos: number;
+    pagos: number;
+    neto: number;
+}
+interface CajaData {
+    fecha: string; // YYYY-MM-DD (recibido de la API)
+    transacciones: Transaccion[];
+    totales: TotalesCaja;
+}
 
 export function CajaPage() {
   // --- Estados ---
   const [dataCaja, setDataCaja] = useState<CajaData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // ¡NUEVO ESTADO PARA LA FECHA SELECCIONADA! Usa tipo Date | undefined
+  // Estado para la fecha seleccionada (Date | undefined)
   const [fechaSeleccionada, setFechaSeleccionada] = useState<Date | undefined>(new Date()); // Inicia con hoy
 
-  // --- Función para Cargar Datos (Modificada para usar fecha seleccionada) ---
-  const fetchCajaDia = async (fecha?: Date) => { // Acepta Date
+  // --- Función para Cargar Datos (Usa Date) ---
+  const fetchCajaDia = async (fecha?: Date) => {
       setLoading(true);
       setError(null);
       let fechaQuery = '';
       if (fecha) {
           try {
-              fechaQuery = format(fecha, "yyyy-MM-dd"); // Formatea a YYYY-MM-DD
+              // Formatea la fecha seleccionada a YYYY-MM-DD para la API
+              fechaQuery = format(fecha, "yyyy-MM-dd");
           } catch (e) {
-              console.error("Error formateando fecha:", e);
+              console.error("Error formateando fecha para API:", e);
               setError("Fecha seleccionada inválida.");
               setLoading(false);
-              return; // No continuar si la fecha es inválida
+              setDataCaja(null); // Limpia datos si la fecha es mala
+              return;
           }
+      } else {
+          // Si no hay fecha, podríamos decidir cargar hoy por defecto o mostrar error
+          // Por ahora, dejamos que la API use su lógica de "hoy" si fechaQuery está vacío
+          console.log("No se proporcionó fecha, la API usará la fecha actual.");
       }
 
       try {
@@ -50,27 +75,37 @@ export function CajaPage() {
         console.log("Llamando a:", apiUrl);
 
         const response = await fetch(apiUrl);
-        if (!response.ok) { /* ... manejo de error ... */
-          const errorData = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ error: `Error HTTP ${response.status}`}));
           throw new Error(errorData.error || `Error HTTP: ${response.status}`);
         }
         const data: CajaData = await response.json();
         console.log("Datos recibidos:", data);
 
+        // Validar data antes de setear
         if (data && data.fecha && Array.isArray(data.transacciones) && data.totales) {
             setDataCaja(data);
-            // Actualiza fechaSeleccionada si la API devuelve una fecha diferente (ej, si no se pasó query)
-            if (fechaQuery !== data.fecha) {
-                 try {
-                     setFechaSeleccionada(new Date(`${data.fecha}T00:00:00-03:00`)); // Asume UTC-3
-                 } catch (parseError) { console.error("Error parseando fecha de API:", data.fecha, parseError);}
+            // Sincroniza el estado fechaSeleccionada con la fecha devuelta por la API
+            // Es importante añadir T00:00:00 para evitar problemas de zona horaria al crear el Date
+            try {
+                 // Usamos UTC para evitar cambios de día por zona horaria del navegador
+                 const [year, month, day] = data.fecha.split('-').map(Number);
+                 setFechaSeleccionada(new Date(Date.UTC(year, month - 1, day)));
+            } catch(parseError){
+                console.error("Error parseando fecha de API para estado:", data.fecha, parseError);
+                // Mantenemos la fecha que estaba o reseteamos a hoy si falla
+                // setFechaSeleccionada(new Date());
             }
-        } else { throw new Error("Formato de respuesta inesperado."); }
 
-      } catch (e) { /* ... manejo de error ... */
+        } else {
+            console.error("Formato de respuesta inesperado:", data);
+            throw new Error("Formato de respuesta inesperado de la API.");
+        }
+
+      } catch (e) {
         console.error("Error al obtener datos de caja:", e);
         setError(e instanceof Error ? e.message : String(e));
-        setDataCaja(null);
+        setDataCaja(null); // Limpia datos en caso de error
       } finally {
         setLoading(false);
       }
@@ -78,22 +113,31 @@ export function CajaPage() {
 
   // Carga inicial (hoy)
   useEffect(() => {
-    fetchCajaDia(fechaSeleccionada); // Pasa la fecha inicial
+    fetchCajaDia(fechaSeleccionada); // Pasa la fecha inicial (hoy)
   }, []); // Carga solo al montar
 
-  // Handler para recargar o cuando cambia la fecha
-  const handleDateChangeAndRefresh = (nuevaFecha?: Date) => {
-      setFechaSeleccionada(nuevaFecha); // Actualiza el estado
-      fetchCajaDia(nuevaFecha); // Llama a la API con la nueva fecha
+  // Handler para cuando se selecciona una fecha en el calendario
+  const handleDateSelect = (nuevaFecha?: Date) => {
+      if (nuevaFecha) {
+          setFechaSeleccionada(nuevaFecha); // Actualiza el estado
+          fetchCajaDia(nuevaFecha); // Llama a la API con la nueva fecha
+      }
   };
+
+   // Handler para recargar datos de la fecha actual
+   const handleRefresh = () => {
+       fetchCajaDia(fechaSeleccionada);
+   };
+
 
   // --- Variables para Renderizado ---
   const { transacciones = [], totales = null } = dataCaja || {};
 
-  // Formatear fecha para mostrar (usa fechaSeleccionada)
-   const fechaFormateada = fechaSeleccionada
-    ? format(fechaSeleccionada, "EEEE, d 'de' MMMM 'de' yyyy", { locale: es }) // Formato español
+  // Formatear fecha para mostrar (usa fechaSeleccionada que es Date)
+   const fechaFormateadaDisplay = fechaSeleccionada
+    ? format(fechaSeleccionada, "EEEE, d 'de' MMMM 'de' yyyy", { locale: es })
     : 'Seleccione fecha';
+
 
   // --- JSX ---
   return (
@@ -101,18 +145,23 @@ export function CajaPage() {
       {/* Header */}
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-4 space-y-2 md:space-y-0">
         <div className="flex items-center space-x-2">
-          {/* ... Icono y Título ... */}
           <Wallet className="w-6 h-6 text-blue-600" />
           <div>
             <h2 className="text-xl font-semibold text-gray-800">Resumen de Caja</h2>
-            <p className="text-sm text-gray-500 capitalize">{fechaFormateada}</p>
+            {/* Muestra la fecha formateada del estado */}
+            <p className="text-sm text-gray-500 capitalize">{loading ? 'Cargando fecha...' : fechaFormateadaDisplay}</p>
           </div>
         </div>
         <div className="flex items-center space-x-2">
-             {/* --- DATE PICKER CON POPOVER --- */}
+            {/* --- DATE PICKER CON POPOVER --- */}
             <Popover>
                 <PopoverTrigger asChild>
-                    <Button variant="outline" size="sm" className="w-[280px] justify-start text-left font-normal" disabled={loading}>
+                    <Button
+                        variant={"outline"}
+                        size="sm"
+                        className={`w-[280px] justify-start text-left font-normal ${!fechaSeleccionada && "text-muted-foreground"}`}
+                        disabled={loading}
+                    >
                         <CalendarIcon className="mr-2 h-4 w-4" />
                         {fechaSeleccionada ? format(fechaSeleccionada, "PPP", { locale: es }) : <span>Seleccione fecha</span>}
                     </Button>
@@ -121,52 +170,39 @@ export function CajaPage() {
                     <Calendar
                         mode="single"
                         selected={fechaSeleccionada}
-                        onSelect={(date) => handleDateChangeAndRefresh(date)} // Llama al handler al seleccionar
+                        onSelect={handleDateSelect} // Llama al handler al seleccionar
                         initialFocus
                         locale={es} // Calendario en español
+                        disabled={loading} // Deshabilita mientras carga
                     />
                 </PopoverContent>
             </Popover>
             {/* --- FIN DATE PICKER --- */}
-            <Button variant="outline" size="icon" onClick={() => handleDateChangeAndRefresh(fechaSeleccionada)} disabled={loading} title="Recargar">
+            <Button variant="outline" size="icon" onClick={handleRefresh} disabled={loading} title="Recargar">
                 <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
              </Button>
         </div>
       </div>
 
       {/* Mensaje de Error */}
-      {error && !loading && ( <Alert variant="destructive"><AlertTitle>Error</AlertTitle><AlertDescription>{error}</AlertDescription></Alert> )}
+       {error && !loading && ( <Alert variant="destructive"><AlertTitle>Error</AlertTitle><AlertDescription>{error}</AlertDescription></Alert> )}
 
-      {/* Cards y Tabla (JSX sin cambios lógicos, solo usa 'totales' y 'transacciones' del estado) */}
-       {/* Cards de Resumen */}
+      {/* Cards de Resumen */}
       {loading ? ( <div className="text-center text-gray-500 py-4"><Loader2 className="h-6 w-6 animate-spin inline-block mr-2"/>Cargando resumen...</div> )
-       : !totales ? ( <p className="text-center text-gray-500 py-4">No se pudo cargar el resumen.</p> )
+       : !totales ? ( <p className="text-center text-gray-500 py-4">No se pudo cargar el resumen para esta fecha.</p> ) // Mensaje si totales es null
        : (
+        // ... JSX de las 4 Cards de Resumen (sin cambios) ...
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Card Efectivo */}
-          <Card className="border-l-4 border-green-500">
-            <CardHeader className="pb-2"><CardTitle className="text-xs font-medium text-gray-500 uppercase">Efectivo</CardTitle></CardHeader>
-            <CardContent><p className="text-2xl font-bold">${(totales.efectivo || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}</p></CardContent>
-          </Card>
-          {/* Card Transferencia */}
-          <Card className="border-l-4 border-blue-500">
-             <CardHeader className="pb-2"><CardTitle className="text-xs font-medium text-gray-500 uppercase">Transferencia</CardTitle></CardHeader>
-             <CardContent><p className="text-2xl font-bold">${(totales.transferencia || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}</p></CardContent>
-          </Card>
-          {/* Card Mercado Pago */}
-          <Card className="border-l-4 border-cyan-500">
-             <CardHeader className="pb-2"><CardTitle className="text-xs font-medium text-gray-500 uppercase">Mercado Pago</CardTitle></CardHeader>
-            <CardContent><p className="text-2xl font-bold">${(totales.mercadoPago || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}</p></CardContent>
-          </Card>
-          {/* Card Gastos */}
-          <Card className="border-l-4 border-red-500">
-             <CardHeader className="pb-2"><CardTitle className="text-xs font-medium text-gray-500 uppercase">Gastos</CardTitle></CardHeader>
-             <CardContent><p className="text-2xl font-bold">${(totales.gastos || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}</p></CardContent>
-          </Card>
+          <Card className="border-l-4 border-green-500"><CardHeader className="pb-2"><CardTitle className="text-xs font-medium text-gray-500 uppercase">Efectivo</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">${(totales.efectivo || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}</p></CardContent></Card>
+          <Card className="border-l-4 border-blue-500"><CardHeader className="pb-2"><CardTitle className="text-xs font-medium text-gray-500 uppercase">Transferencia</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">${(totales.transferencia || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}</p></CardContent></Card>
+          <Card className="border-l-4 border-cyan-500"><CardHeader className="pb-2"><CardTitle className="text-xs font-medium text-gray-500 uppercase">Mercado Pago</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">${(totales.mercadoPago || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}</p></CardContent></Card>
+          <Card className="border-l-4 border-red-500"><CardHeader className="pb-2"><CardTitle className="text-xs font-medium text-gray-500 uppercase">Gastos</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">${(totales.gastos || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}</p></CardContent></Card>
         </div>
       )}
-       {/* Resumen Total */}
+
+      {/* Resumen Total */}
        {loading ? null : totales && (
+           // ... JSX del Resumen Total (sin cambios) ...
            <Card className="bg-gray-800 text-white border-gray-700">
              <CardContent className="pt-4 md:pt-6">
                  <div className="grid grid-cols-3 gap-4 text-center">
@@ -177,13 +213,15 @@ export function CajaPage() {
              </CardContent>
            </Card>
        )}
-        {/* Detalle de Transacciones */}
+
+      {/* Detalle de Transacciones */}
       <Card>
-        <CardHeader><CardTitle>Detalle de Transacciones</CardTitle></CardHeader> {/* Removido "del Día" */}
+        <CardHeader><CardTitle>Detalle de Transacciones</CardTitle></CardHeader>
         <CardContent>
           <div className="rounded-md border overflow-x-auto">
             <Table>
               <TableHeader>
+                {/* ... JSX TableHeader sin cambios ... */}
                 <TableRow>
                   <TableHead className="w-[80px]">Hora</TableHead>
                   <TableHead>Chofer</TableHead>
@@ -193,10 +231,11 @@ export function CajaPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
+                {/* ... JSX TableBody con loading/error/no data/map sin cambios ... */}
                 {loading ? (
                     <tr><td colSpan={5} className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin inline-block mr-2"/>Cargando...</td></tr>
                 ) : error ? (
-                    <tr><td colSpan={5} className="text-center text-red-600 py-4">Error al cargar. Intente recargar.</td></tr>
+                    <tr><td colSpan={5} className="text-center text-red-600 py-4">Error al cargar transacciones. Intente recargar.</td></tr>
                 ) : transacciones.length === 0 ? (
                     <tr><td colSpan={5} className="text-center text-gray-500 py-4">No hay transacciones para la fecha seleccionada.</td></tr>
                 ) : (
@@ -232,6 +271,7 @@ export function CajaPage() {
           </div>
            {/* Footer Opcional */}
             {!loading && !error && transacciones.length > 0 && totales && (
+                 // ... JSX Footer sin cambios ...
                  <div className="mt-4 flex flex-col sm:flex-row justify-between items-center px-1 text-sm">
                     <span className="text-gray-600 mb-2 sm:mb-0"> Total: {transacciones.length} transacciones </span>
                     <div className="text-right font-semibold">
