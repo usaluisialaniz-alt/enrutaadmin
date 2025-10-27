@@ -1,8 +1,8 @@
-// src/pages/OperacionesPage.tsx (o donde esté tu componente)
+// src/pages/OperacionesPage.tsx (Opción B)
 
-import React, { useState, useEffect } from 'react'; // Añadido React si no estaba
-import { Plus, X, DollarSign, Loader2 } from 'lucide-react'; // Añadido Loader2
-import { Button } from '@/components/ui/button'; // Ajusta la ruta si es necesario
+import React, { useState, useEffect, useMemo } from 'react';
+import { Plus, X, DollarSign, Loader2, CalendarDays } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -13,59 +13,57 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'; // Añadido AlertTitle
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 
-// Tipos de datos (igual que antes)
+// --- Tipos de Datos (Modificado Pago) ---
 interface Chofer {
   id_chofer: string;
   nombre_completo: string;
   deuda_actual: string | number;
   estado: string;
-  // Añade otras props si las necesitas/devuelve la API
+  vehiculo_asignado_id?: string;
 }
-
 interface Vehiculo {
     id_vehiculo: string;
     nombre_visible: string;
     tarifa_normal: string | number;
     tarifa_especial: string | number;
-    // Añade otras props si las necesitas/devuelve la API
 }
-
+// ¡TIPO PAGO MODIFICADO!
 type Pago = {
-  id: string; // ID temporal para el frontend
-  monto: string;
+  id: string; // ID temporal
+  monto: string; // Monto efectivamente pagado
   metodo: string;
+  diasNormalesPagados: number | ''; // Días asociados a este pago
+  diasEspecialesPagados: number | ''; // Días asociados a este pago
 };
+type Gasto = { id: string; concepto: string; monto: string; };
 
-type Gasto = {
-  id: string; // ID temporal para el frontend
-  concepto: string;
-  monto: string;
-};
 
 export function OperacionesPage() {
-  // Estados para datos de la API
+  // --- Estados para datos de la API ---
   const [choferes, setChoferes] = useState<Chofer[]>([]);
   const [vehiculos, setVehiculos] = useState<Vehiculo[]>([]);
   const [loadingChoferes, setLoadingChoferes] = useState(true);
   const [loadingVehiculos, setLoadingVehiculos] = useState(true);
 
-  // Estados del formulario
+  // --- Estados del formulario ---
   const [choferId, setChoferId] = useState('');
-  const [vehiculoId, setVehiculoId] = useState(''); // Ahora necesitamos el ID del vehículo
-  const [montoPagar, setMontoPagar] = useState('');
-  const [pagos, setPagos] = useState<Pago[]>([]);
+  // const [montoPagar, setMontoPagar] = useState(''); // <-- ELIMINADO
+  // const [diasNormales, setDiasNormales] = useState<number | '' >(''); // <-- ELIMINADO
+  // const [diasEspeciales, setDiasEspeciales] = useState<number | ''>(''); // <-- ELIMINADO
+  const [pagos, setPagos] = useState<Pago[]>([]); // Usará el tipo Pago modificado
   const [gastos, setGastos] = useState<Gasto[]>([]);
 
-  // Estados para UI y feedback
+  // --- Estados para UI y feedback ---
   const [mensaje, setMensaje] = useState<{ tipo: 'success' | 'error'; texto: string } | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false); // Para deshabilitar botón al guardar
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // --- Carga de Datos Inicial ---
+  // --- Carga de Datos Inicial (Sin Cambios) ---
   useEffect(() => {
-    // Cargar Choferes
+    // --- Pegar aquí las funciones fetchChoferes y fetchVehiculos ---
+     // Cargar Choferes
     const fetchChoferes = async () => {
       setLoadingChoferes(true);
       try {
@@ -73,15 +71,14 @@ export function OperacionesPage() {
         if (!response.ok) throw new Error('Error al cargar chóferes');
         const data = await response.json();
         if (Array.isArray(data.choferes)) {
-          setChoferes(data.choferes.filter(c => c.estado?.toLowerCase() === 'activo')); // Filtra activos aquí
+          setChoferes(data.choferes); // No filtramos aquí para mostrar deuda de inactivos si es necesario
         } else { throw new Error('Formato de chóferes inesperado'); }
       } catch (err) {
-        setMensaje({ tipo: 'error', texto: err instanceof Error ? err.message : 'Error desconocido' });
+        setMensaje({ tipo: 'error', texto: err instanceof Error ? err.message : 'Error desconocido al cargar chóferes' });
       } finally {
         setLoadingChoferes(false);
       }
     };
-
     // Cargar Vehículos
     const fetchVehiculos = async () => {
         setLoadingVehiculos(true);
@@ -93,164 +90,184 @@ export function OperacionesPage() {
                 setVehiculos(data.vehiculos);
             } else { throw new Error('Formato de vehículos inesperado'); }
         } catch (err) {
-             setMensaje({ tipo: 'error', texto: err instanceof Error ? err.message : 'Error desconocido' });
+             setMensaje({ tipo: 'error', texto: err instanceof Error ? err.message : 'Error desconocido al cargar vehículos' });
         } finally {
             setLoadingVehiculos(false);
         }
     };
-
     fetchChoferes();
     fetchVehiculos();
-  }, []); // Cargar solo una vez
+  }, []);
 
   // --- Selección y Cálculos ---
   const choferSeleccionado = choferes.find((c) => c.id_chofer === choferId);
-  // Encuentra el vehículo asociado al chofer O el seleccionado manualmente
-  // (Idealmente, la API debería devolver el vehículo del chofer,
-  // pero por ahora buscamos en la lista completa)
-   const vehiculoDelChofer = vehiculos.find((v) => v.id_vehiculo === choferSeleccionado?.vehiculo_asignado_id);
-   const vehiculoSeleccionadoManualmente = vehiculos.find((v) => v.id_vehiculo === vehiculoId);
-   // Prioriza el seleccionado manualmente si existe, sino el asociado al chofer
-   const vehiculoActivo = vehiculoSeleccionadoManualmente || vehiculoDelChofer;
+  const vehiculoActivo = useMemo(() => {
+      if (!choferSeleccionado?.vehiculo_asignado_id) return null;
+      return vehiculos.find((v) => v.id_vehiculo === choferSeleccionado.vehiculo_asignado_id);
+  }, [choferId, choferes, vehiculos]);
+
+  // --- ¡NUEVO! Cálculo del Monto *DEBIDO* basado en los días de TODOS los pagos ---
+  const montoTotalDebidoJornada = useMemo(() => {
+    if (!vehiculoActivo) return 0;
+    const tarifaN = parseFloat(String(vehiculoActivo.tarifa_normal)) || 0;
+    const tarifaE = parseFloat(String(vehiculoActivo.tarifa_especial)) || 0;
+    let totalDN = 0;
+    let totalDE = 0;
+    pagos.forEach(p => {
+        totalDN += Number(p.diasNormalesPagados) || 0;
+        totalDE += Number(p.diasEspecialesPagados) || 0;
+    });
+    return (totalDN * tarifaN) + (totalDE * tarifaE);
+  }, [pagos, vehiculoActivo]);
 
 
-  // --- Handlers para Pagos y Gastos (sin cambios lógicos) ---
+  // --- Handlers para Pagos (Modificado) ---
   const handleAgregarPago = (montoInicial = '') => {
-    setPagos([...pagos, { id: Date.now().toString(), monto: montoInicial, metodo: 'Efectivo' }]); // Cambiado a 'Efectivo'
+    // Añade los nuevos campos de días
+    setPagos([...pagos, {
+        id: Date.now().toString(),
+        monto: montoInicial,
+        metodo: 'Efectivo',
+        diasNormalesPagados: '', // Inicia vacío
+        diasEspecialesPagados: '', // Inicia vacío
+    }]);
   };
   const handleEliminarPago = (id: string) => setPagos(pagos.filter((p) => p.id !== id));
-  const handleActualizarPago = (id: string, campo: 'monto' | 'metodo', valor: string) => {
+  // ¡MODIFICADO para aceptar los nuevos campos!
+  const handleActualizarPago = (id: string, campo: keyof Pago, valor: string | number) => {
+    // Validación específica para montos y días
+    if ((campo === 'monto') && valor !== '' && !/^\d*\.?\d*$/.test(String(valor))) {
+        return; // No actualizar si no es un número válido
+    }
+     if ((campo === 'diasNormalesPagados' || campo === 'diasEspecialesPagados')) {
+         const strValor = String(valor);
+         if (strValor !== '' && !/^\d+$/.test(strValor)) {
+             return; // No actualizar si no es vacío o entero positivo
+         }
+         // Convertimos a número o mantenemos vacío
+         valor = strValor === '' ? '' : parseInt(strValor, 10);
+     }
+
     setPagos(pagos.map((p) => (p.id === id ? { ...p, [campo]: valor } : p)));
   };
-  const handleAgregarGasto = () => setGastos([...gastos, { id: Date.now().toString(), concepto: '', monto: '' }]);
-  const handleEliminarGasto = (id: string) => setGastos(gastos.filter((g) => g.id !== id));
-  const handleActualizarGasto = (id: string, campo: 'concepto' | 'monto', valor: string) => {
-    setGastos(gastos.map((g) => (g.id === id ? { ...g, [campo]: valor } : g)));
-  };
 
-  // --- Handlers para Botones de Tarifa ---
-   const handleTarifaNormal = () => {
-    if (vehiculoActivo) setMontoPagar(String(vehiculoActivo.tarifa_normal || 0));
-  };
-  const handleTarifaEspecial = () => {
-    if (vehiculoActivo) setMontoPagar(String(vehiculoActivo.tarifa_especial || 0));
-  };
-  const handlePagarDeuda = () => {
-    if (choferSeleccionado) {
-        const deudaNum = parseFloat(String(choferSeleccionado.deuda_actual)) || 0;
-        const montoDeuda = deudaNum > 0 ? deudaNum.toFixed(2) : '';
-        handleAgregarPago(montoDeuda); // Llama a la función unificada
-    }
-    setMontoPagar('0');
-  };
-
-  // --- Handler para Guardar Rendición ---
-  const handleGuardarRendicion = async () => {
-    setMensaje(null); // Limpia mensajes previos
-    if (!choferId) {
-      setMensaje({ tipo: 'error', texto: 'Error: Debe seleccionar un chofer' });
-      return;
-    }
-    // Usamos vehiculoActivo que ya tiene la lógica de selección
-    if (!vehiculoActivo) {
-       setMensaje({ tipo: 'error', texto: 'Error: No se pudo determinar el vehículo (selecciónelo o asógnelo al chofer)' });
-       return;
-    }
-    if (montoPagar === '' || isNaN(parseFloat(montoPagar))) { // Verifica que sea un número válido
-      setMensaje({ tipo: 'error', texto: 'Error: El monto a pagar debe ser un número válido' });
-      return;
-    }
-
-    setIsSubmitting(true); // Deshabilita botón
-
-    // Prepara los datos para enviar
-    const datosParaApi = {
-        choferId: choferId,
-        vehiculoId: vehiculoActivo.id_vehiculo, // Enviamos el ID del vehículo activo
-        montoAPagar: parseFloat(montoPagar) || 0,
-        // Filtramos pagos/gastos vacíos antes de enviar
-        pagos: pagos
-                .filter(p => p.monto && parseFloat(p.monto) > 0)
-                .map(({id, ...rest}) => rest), // Quitamos ID temporal del frontend
-        gastos: gastos
-                .filter(g => g.concepto && g.monto && parseFloat(g.monto) > 0)
-                .map(({id, ...rest}) => rest), // Quitamos ID temporal
+  // --- Handlers para Gastos (sin cambios lógicos) ---
+  const handleAgregarGasto = () => { /* ... sin cambios ... */ };
+  const handleEliminarGasto = (id: string) => { /* ... sin cambios ... */ };
+  const handleActualizarGasto = (id: string, campo: 'concepto' | 'monto', valor: string) => { /* ... sin cambios ... */ };
+   // --- Pegar aquí las 3 funciones de handlers de gastos ---
+    const handleAgregarGasto = () => setGastos([...gastos, { id: Date.now().toString(), concepto: '', monto: '' }]);
+    const handleEliminarGasto = (id: string) => setGastos(gastos.filter((g) => g.id !== id));
+    const handleActualizarGasto = (id: string, campo: 'concepto' | 'monto', valor: string) => {
+         // Validación para monto: permitir solo números y un punto decimal
+        if (campo === 'monto' && valor !== '' && !/^\d*\.?\d*$/.test(valor)) {
+            return; // No actualizar si no es un número válido
+        }
+        setGastos(gastos.map((g) => (g.id === id ? { ...g, [campo]: valor } : g)));
     };
 
-    console.log("Enviando a /api/saveRendicion:", datosParaApi);
+  // --- Handler para Guardar Rendición (Modificado) ---
+  const handleGuardarRendicion = async () => {
+    setMensaje(null);
+    if (!choferId) { /* ... validación chofer ... */ return; }
+    if (!vehiculoActivo) { /* ... validación vehículo ... */ return; }
+
+    // Validación: Al menos debe haber pagos con días/monto o gastos con monto
+    const tienePagosValidos = pagos.some(p => (Number(p.diasNormalesPagados) > 0 || Number(p.diasEspecialesPagados) > 0 || parseFloat(p.monto) > 0));
+    const tieneGastosValidos = gastos.some(g => g.concepto && parseFloat(g.monto) > 0);
+
+    if (!tienePagosValidos && !tieneGastosValidos) {
+        setMensaje({ tipo: 'error', texto: 'Debe ingresar al menos un pago (con días o monto) o un gasto válido.' });
+        return;
+    }
+
+    setIsSubmitting(true);
+
+    // El montoAPagar ahora se calcula en el backend basado en los días enviados en 'pagos'
+    const datosParaApi = {
+        choferId: choferId,
+        vehiculoId: vehiculoActivo.id_vehiculo,
+        // montoAPagar: montoTotalDebidoJornada, // Ya no se envía pre-calculado
+        pagos: pagos
+                .filter(p => parseFloat(p.monto) > 0 || Number(p.diasNormalesPagados) > 0 || Number(p.diasEspecialesPagados) > 0) // Filtra pagos realmente útiles
+                .map(({id, ...rest}) => ({ // Quitamos ID temporal
+                    ...rest,
+                    // Aseguramos enviar números
+                    monto: parseFloat(rest.monto) || 0,
+                    diasNormalesPagados: Number(rest.diasNormalesPagados) || 0,
+                    diasEspecialesPagados: Number(rest.diasEspecialesPagados) || 0,
+                })),
+        gastos: gastos
+                .filter(g => g.concepto && g.monto && parseFloat(g.monto) > 0)
+                .map(({id, ...rest}) => ({...rest, monto: parseFloat(rest.monto)})),
+    };
+
+    console.log("Enviando a /api/saveRendicion (Opción B):", datosParaApi);
 
     try {
-        const response = await fetch('/api/saveRendicion', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(datosParaApi),
+        const response = await fetch('/api/saveRendicion', { /* ... fetch options ... */
+             method: 'POST',
+             headers: { 'Content-Type': 'application/json' },
+             body: JSON.stringify(datosParaApi),
         });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || `Error ${response.status}`);
+        setMensaje({ tipo: 'success', texto: result.message || 'Rendición guardada' });
 
-        const result = await response.json(); // Intentamos leer la respuesta
-
-        if (!response.ok) {
-            // Si la respuesta no es OK, lanzamos el error que viene del backend
-            throw new Error(result.error || `Error ${response.status}`);
-        }
-
-        setMensaje({ tipo: 'success', texto: result.message || 'Rendición guardada con éxito' });
-
-        // Limpiar formulario después de un pequeño retraso
         setTimeout(() => {
           setChoferId('');
-          setVehiculoId(''); // Limpia también el vehículo manual
-          setMontoPagar('');
           setPagos([]);
           setGastos([]);
           setMensaje(null);
-          // Opcional: Recargar datos de choferes para ver deuda actualizada
-          // fetchChoferes();
         }, 2500);
 
-    } catch (err) {
-        console.error("Error al guardar rendición:", err);
-        setMensaje({ tipo: 'error', texto: err instanceof Error ? err.message : 'Error desconocido al guardar' });
+    } catch (err) { /* ... manejo de error sin cambios ... */
+        console.error("Error al guardar:", err);
+        setMensaje({ tipo: 'error', texto: err instanceof Error ? err.message : 'Error desconocido' });
     } finally {
-        setIsSubmitting(false); // Rehabilita botón
+        setIsSubmitting(false);
     }
   };
 
-  // --- Cálculos para Resumen (sin cambios lógicos) ---
-  const totalPagos = pagos.reduce((sum, p) => sum + (parseFloat(p.monto) || 0), 0);
+  // --- Cálculos para Resumen (Modificado) ---
+  const totalPagadoEfectivamente = pagos.reduce((sum, p) => sum + (parseFloat(p.monto) || 0), 0); // Lo que realmente entregó
   const totalGastos = gastos.reduce((sum, g) => sum + (parseFloat(g.monto) || 0), 0);
   const deudaActual = parseFloat(String(choferSeleccionado?.deuda_actual)) || 0;
-  const deudaFinal = deudaActual + (parseFloat(montoPagar) || 0) - totalPagos - totalGastos;
+  // La deuda final ahora se basa en el monto DEBIDO por los días vs lo pagado
+  const deudaFinal = deudaActual + montoTotalDebidoJornada - totalPagadoEfectivamente - totalGastos;
 
-  // --- JSX ---
+  // --- JSX (Modificado Significativamente) ---
   return (
-    <div className="max-w-5xl mx-auto space-y-4 p-4 md:p-6"> {/* Ajustado space y padding */}
+    <div className="max-w-5xl mx-auto space-y-4 p-4 md:p-6">
       {/* Mensaje de Alerta */}
-      {mensaje && (
-        <Alert variant={mensaje.tipo === 'error' ? 'destructive' : 'default'} className="mb-4">
-           {/* <Terminal className="h-4 w-4" /> // Opcional: Icono */}
+      {mensaje && ( /* ... JSX sin cambios ... */
+         <Alert variant={mensaje.tipo === 'error' ? 'destructive' : 'default'} className="mb-4">
            <AlertTitle>{mensaje.tipo === 'error' ? 'Error' : 'Éxito'}</AlertTitle>
           <AlertDescription>{mensaje.texto}</AlertDescription>
         </Alert>
-      )}
+       )}
 
-      {/* Card Principal: Chofer, Vehículo, Monto */}
+      {/* Card Principal: Chofer y Vehículo */}
       <Card>
-        <CardHeader><CardTitle>Información de la Jornada</CardTitle></CardHeader>
-        <CardContent className="space-y-4"> {/* Ajustado space */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4"> {/* Ajustado gap */}
+        <CardHeader><CardTitle>Información General</CardTitle></CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Selector de Chofer */}
             <div className="space-y-1">
               <Label htmlFor="chofer">Chofer</Label>
-              {loadingChoferes ? (<p className="text-sm text-gray-500">Cargando...</p>) : (
-                <Select value={choferId} onValueChange={setChoferId} disabled={isSubmitting}>
+               {/* ... JSX del Select de Chofer sin cambios ... */}
+                {loadingChoferes ? (<p className="text-sm text-gray-500">Cargando chóferes...</p>) : (
+                <Select value={choferId} onValueChange={(value) => {setChoferId(value); /* No reseteamos días aquí */}} disabled={isSubmitting}>
                   <SelectTrigger id="chofer"><SelectValue placeholder="Seleccionar chofer" /></SelectTrigger>
                   <SelectContent>
-                    {choferes.map((chofer) => (
+                    {choferes
+                      .filter(c => c.estado?.toLowerCase() === 'activo')
+                      .map((chofer) => (
                       <SelectItem key={chofer.id_chofer} value={chofer.id_chofer}>
-                        {chofer.nombre_completo} (Deuda: ${ (parseFloat(String(chofer.deuda_actual))||0).toLocaleString('es-AR', {minimumFractionDigits: 2})})
+                        {chofer.nombre_completo} (Deuda: ${(parseFloat(String(chofer.deuda_actual))||0).toLocaleString('es-AR', {minimumFractionDigits: 2})})
                       </SelectItem>
                     ))}
-                    {choferes.length === 0 && <SelectItem value="" disabled>No hay chóferes activos</SelectItem>}
+                    {choferes.filter(c => c.estado?.toLowerCase() === 'activo').length === 0 && <SelectItem value="" disabled>No hay chóferes activos</SelectItem>}
                   </SelectContent>
                 </Select>
                )}
@@ -263,84 +280,82 @@ export function OperacionesPage() {
                  </div>
                )}
             </div>
-
-            {/* Selector de Vehículo (Opcional si siempre es el del chofer) */}
-             <div className="space-y-1">
-               <Label htmlFor="vehiculo">Vehículo Asignado</Label>
+            {/* Vehículo Asignado */}
+            <div className="space-y-1">
+              <Label htmlFor="vehiculo-asignado">Vehículo Asignado</Label>
+               {/* ... JSX del Input de Vehículo sin cambios ... */}
                 {loadingVehiculos ? (<p className="text-sm text-gray-500">Cargando...</p>) : (
                 <Input
                     id="vehiculo-asignado"
-                    value={vehiculoActivo?.nombre_visible || (choferId ? 'Cargando/No asignado...' : 'Seleccione chofer')}
+                    value={vehiculoActivo?.nombre_visible || (choferId ? (loadingVehiculos ? 'Cargando...' : 'No asignado') : 'Seleccione chofer')}
                     readOnly
-                    className="bg-gray-100"
+                    className="bg-gray-100 text-sm h-9"
                  />
                 )}
-                 {/* Podrías añadir un Select aquí si quieres permitir cambiar el vehículo manualmente */}
-                 {/* <Select value={vehiculoId} onValueChange={setVehiculoId} disabled={isSubmitting}>...</Select> */}
-             </div>
+                 {vehiculoActivo && !loadingVehiculos && (
+                    <div className="text-xs text-gray-500 pt-1">
+                        Tarifas: N ${ parseFloat(String(vehiculoActivo.tarifa_normal)||0).toLocaleString('es-AR') }
+                        {' / '}
+                        E ${ parseFloat(String(vehiculoActivo.tarifa_especial)||0).toLocaleString('es-AR') }
+                    </div>
+                 )}
+            </div>
           </div>
-
-          {/* Monto a Pagar y Botones de Tarifa */}
-          {choferId && !loadingVehiculos && ( // Muestra solo si hay chofer y vehículos cargados
-            <>
-                <div className="space-y-1">
-                    <Label htmlFor="monto">Monto a Pagar (Jornada)</Label>
-                    <div className="flex items-center space-x-2">
-                    <div className="relative flex-1">
-                        <DollarSign className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                        <Input id="monto" type="number" step="0.01" value={montoPagar}
-                        onChange={(e) => setMontoPagar(e.target.value)} placeholder="0.00"
-                        className="pl-8" disabled={isSubmitting}/>
-                    </div>
-                    </div>
-                </div>
-
-                {/* Botones de Tarifa */}
-                {vehiculoActivo && (
-                    <div className="flex flex-wrap gap-2 pt-1"> {/* Ajustado gap */}
-                    <Button type="button" variant="outline" size="sm" onClick={handleTarifaNormal} disabled={isSubmitting}>
-                        Día Normal (${ (parseFloat(String(vehiculoActivo.tarifa_normal))||0).toLocaleString('es-AR')})
-                    </Button>
-                    <Button type="button" variant="outline" size="sm" onClick={handleTarifaEspecial} disabled={isSubmitting}>
-                        Día Especial (${ (parseFloat(String(vehiculoActivo.tarifa_especial))||0).toLocaleString('es-AR')})
-                    </Button>
-                    <Button type="button" variant="outline" size="sm" onClick={handlePagarDeuda} disabled={isSubmitting || deudaActual <= 0}> {/* Deshabilita si no hay deuda */}
-                        Pagar Deuda ($0)
-                    </Button>
-                    </div>
-                )}
-            </>
-          )}
-
+          {/* --- SECCIÓN DE MONTO A PAGAR Y BOTONES ELIMINADA --- */}
         </CardContent>
       </Card>
 
-      {/* Sección de Pagos */}
+      {/* --- SECCIÓN DE PAGOS MODIFICADA --- */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle className="text-lg">Pagos</CardTitle> {/* Tamaño ajustado */}
-            <Button onClick={()=>handleAgregarPago()} size="sm" variant="outline" disabled={isSubmitting}>
-              <Plus className="w-4 h-4 mr-1" /> Agregar Pago
+            <CardTitle className="text-lg">Registro de Pagos y Días Rendidos</CardTitle>
+            <Button onClick={()=>handleAgregarPago()} size="sm" variant="outline" disabled={isSubmitting || !choferId || !vehiculoActivo}>
+              <Plus className="w-4 h-4 mr-1" /> Agregar Fila
             </Button>
           </div>
+           <p className="text-xs text-gray-500 pt-1">Registre aquí el dinero entregado y los días que corresponden a ese pago.</p>
         </CardHeader>
         <CardContent>
           {pagos.length === 0 ? (
-            <p className="text-sm text-gray-500 text-center py-3">No hay pagos registrados.</p>
+            <p className="text-sm text-gray-500 text-center py-3">No hay pagos/días registrados.</p>
           ) : (
-            <div className="space-y-2">
-              {pagos.map((pago, index) => (
-                <div key={pago.id} className="flex items-center space-x-2 dynamic-row">
-                  <div className="flex-1 relative">
-                    <DollarSign className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
-                    <Input type="number" step="0.01" value={pago.monto} placeholder="Monto" disabled={isSubmitting}
-                           onChange={(e) => handleActualizarPago(pago.id, 'monto', e.target.value)} className="pl-7"/>
+            <div className="space-y-3"> {/* Aumentado space */}
+              {pagos.map((pago) => (
+                <div key={pago.id} className="grid grid-cols-1 md:grid-cols-10 gap-2 items-end p-3 bg-gray-50 rounded-lg dynamic-row"> {/* Usamos grid */}
+                  {/* Días Normales */}
+                  <div className="md:col-span-2 space-y-1">
+                    <Label htmlFor={`dn-${pago.id}`} className="text-xs text-gray-600 flex items-center">
+                        <CalendarDays className="w-3 h-3 mr-1"/> Días N.
+                    </Label>
+                    <Input id={`dn-${pago.id}`} type="number" min="0" step="1"
+                           value={pago.diasNormalesPagados} placeholder="0" disabled={isSubmitting}
+                           onChange={(e) => handleActualizarPago(pago.id, 'diasNormalesPagados', e.target.value)} />
                   </div>
-                  <div className="flex-1">
+                  {/* Días Especiales */}
+                   <div className="md:col-span-2 space-y-1">
+                    <Label htmlFor={`de-${pago.id}`} className="text-xs text-gray-600 flex items-center">
+                        <CalendarDays className="w-3 h-3 mr-1"/> Días E.
+                    </Label>
+                    <Input id={`de-${pago.id}`} type="number" min="0" step="1"
+                           value={pago.diasEspecialesPagados} placeholder="0" disabled={isSubmitting}
+                           onChange={(e) => handleActualizarPago(pago.id, 'diasEspecialesPagados', e.target.value)} />
+                  </div>
+                   {/* Monto Pagado */}
+                  <div className="md:col-span-3 space-y-1">
+                    <Label htmlFor={`monto-${pago.id}`} className="text-xs text-gray-600">Monto Pagado</Label>
+                    <div className="relative">
+                      <DollarSign className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
+                      <Input id={`monto-${pago.id}`} type="number" step="0.01" value={pago.monto} placeholder="0.00" disabled={isSubmitting}
+                             onChange={(e) => handleActualizarPago(pago.id, 'monto', e.target.value)} className="pl-7"/>
+                    </div>
+                  </div>
+                  {/* Método */}
+                  <div className="md:col-span-2 space-y-1">
+                     <Label htmlFor={`metodo-${pago.id}`} className="text-xs text-gray-600">Método</Label>
                     <Select value={pago.metodo} disabled={isSubmitting}
                             onValueChange={(valor) => handleActualizarPago(pago.id, 'metodo', valor)}>
-                      <SelectTrigger className="h-9 text-xs"> {/* Ajuste altura y texto */}
+                      <SelectTrigger id={`metodo-${pago.id}`} className="h-9 text-xs">
                          <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -350,69 +365,83 @@ export function OperacionesPage() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <Button variant="ghost" size="icon" onClick={() => handleEliminarPago(pago.id)} className="h-8 w-8 text-red-500 hover:bg-red-50" disabled={isSubmitting}>
-                    <X className="w-4 h-4" />
-                  </Button>
+                  {/* Botón Eliminar */}
+                  <div className="md:col-span-1 text-right">
+                    <Button variant="ghost" size="icon" onClick={() => handleEliminarPago(pago.id)} className="h-8 w-8 text-red-500 hover:bg-red-50" disabled={isSubmitting}>
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
                 </div>
               ))}
-              <div className="flex justify-end pt-2 border-t">
-                <div className="text-right text-sm">
-                  <span className="text-gray-600">Total Pagos: </span>
-                  <span className="font-medium text-green-600">${totalPagos.toLocaleString('es-AR', {minimumFractionDigits: 2})}</span>
+              {/* Totales */}
+              <div className="flex justify-end pt-2 border-t text-sm space-x-4">
+                 <div className="text-right">
+                  <span className="text-gray-600">Total Días: </span>
+                  <span className="font-medium">
+                     {pagos.reduce((sum, p)=> sum + (Number(p.diasNormalesPagados)||0), 0)}N
+                     {' / '}
+                     {pagos.reduce((sum, p)=> sum + (Number(p.diasEspecialesPagados)||0), 0)}E
+                  </span>
+                </div>
+                 <div className="text-right">
+                  <span className="text-gray-600">Total $ Pagado: </span>
+                  <span className="font-medium text-green-600">${totalPagadoEfectivamente.toLocaleString('es-AR', {minimumFractionDigits: 2})}</span>
                 </div>
               </div>
             </div>
           )}
         </CardContent>
       </Card>
+      {/* --- FIN SECCIÓN PAGOS MODIFICADA --- */}
+
 
       {/* Sección de Gastos */}
       <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-lg">Gastos</CardTitle>
-             <Button onClick={handleAgregarGasto} size="sm" variant="outline" disabled={isSubmitting}>
-              <Plus className="w-4 h-4 mr-1" /> Agregar Gasto
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-           {gastos.length === 0 ? (
-             <p className="text-sm text-gray-500 text-center py-3">No hay gastos registrados.</p>
-          ) : (
-            <div className="space-y-2">
-              {gastos.map((gasto, index) => (
-                <div key={gasto.id} className="flex items-center space-x-2 dynamic-row">
-                   <div className="flex-1">
-                    <Input type="text" value={gasto.concepto} placeholder="Concepto" disabled={isSubmitting}
-                           onChange={(e) => handleActualizarGasto(gasto.id, 'concepto', e.target.value)} />
-                  </div>
-                  <div className="flex-1 relative">
-                     <DollarSign className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
-                    <Input type="number" step="0.01" value={gasto.monto} placeholder="Monto" disabled={isSubmitting}
-                           onChange={(e) => handleActualizarGasto(gasto.id, 'monto', e.target.value)} className="pl-7"/>
-                  </div>
-                   <Button variant="ghost" size="icon" onClick={() => handleEliminarGasto(gasto.id)} className="h-8 w-8 text-red-500 hover:bg-red-50" disabled={isSubmitting}>
-                    <X className="w-4 h-4" />
-                  </Button>
+           {/* ... JSX sin cambios (CardHeader, map de gastos, Total Gastos) ... */}
+            <CardHeader>
+                <div className="flex items-center justify-between">
+                    <CardTitle className="text-lg">Gastos</CardTitle>
+                    <Button onClick={handleAgregarGasto} size="sm" variant="outline" disabled={isSubmitting || !choferId}>
+                    <Plus className="w-4 h-4 mr-1" /> Agregar Gasto
+                    </Button>
                 </div>
-              ))}
-              <div className="flex justify-end pt-2 border-t">
-                <div className="text-right text-sm">
-                  <span className="text-gray-600">Total Gastos: </span>
-                  <span className="font-medium text-red-600">${totalGastos.toLocaleString('es-AR', {minimumFractionDigits: 2})}</span>
-                </div>
-              </div>
-            </div>
-          )}
-        </CardContent>
+            </CardHeader>
+            <CardContent>
+                {gastos.length === 0 ? (
+                    <p className="text-sm text-gray-500 text-center py-3">No hay gastos registrados.</p>
+                ) : (
+                    <div className="space-y-2">
+                    {gastos.map((gasto) => (
+                        <div key={gasto.id} className="flex items-center space-x-2 dynamic-row">
+                            <div className="flex-1">
+                                <Input type="text" value={gasto.concepto} placeholder="Concepto" disabled={isSubmitting}
+                                    onChange={(e) => handleActualizarGasto(gasto.id, 'concepto', e.target.value)} />
+                            </div>
+                            <div className="flex-1 relative">
+                                <DollarSign className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
+                                <Input type="number" step="0.01" value={gasto.monto} placeholder="Monto" disabled={isSubmitting}
+                                    onChange={(e) => handleActualizarGasto(gasto.id, 'monto', e.target.value)} className="pl-7"/>
+                            </div>
+                            <Button variant="ghost" size="icon" onClick={() => handleEliminarGasto(gasto.id)} className="h-8 w-8 text-red-500 hover:bg-red-50" disabled={isSubmitting}>
+                                <X className="w-4 h-4" />
+                            </Button>
+                        </div>
+                    ))}
+                    <div className="flex justify-end pt-2 border-t">
+                        <div className="text-right text-sm">
+                        <span className="text-gray-600">Total Gastos: </span>
+                        <span className="font-medium text-red-600">${totalGastos.toLocaleString('es-AR', {minimumFractionDigits: 2})}</span>
+                        </div>
+                    </div>
+                    </div>
+                )}
+            </CardContent>
       </Card>
 
-      {/* Resumen y Botón Guardar */}
-      <Card className="bg-gray-50"> {/* Fondo sutil */}
-        <CardContent className="pt-4 space-y-2"> {/* Ajustado padding y space */}
-          {/* Mostramos resumen solo si hay chofer seleccionado */}
-          {choferId && (
+      {/* Resumen y Botón Guardar (Modificado) */}
+      <Card className="bg-gray-50">
+        <CardContent className="pt-4 space-y-2">
+          {choferId && vehiculoActivo && ( // Muestra solo si hay chofer y vehículo
             <>
                 <div className="flex justify-between items-center text-sm">
                     <span className="text-gray-600">Deuda Anterior:</span>
@@ -420,13 +449,14 @@ export function OperacionesPage() {
                     ${deudaActual.toLocaleString('es-AR', {minimumFractionDigits: 2})}
                     </span>
                 </div>
+                {/* Mostramos Monto DEBIDO por los días */}
                 <div className="flex justify-between items-center text-sm">
-                    <span className="text-gray-600">Monto Jornada:</span>
-                    <span>+ ${(parseFloat(montoPagar) || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}</span>
+                    <span className="text-gray-600">Monto Jornada (por días):</span>
+                    <span>+ ${montoTotalDebidoJornada.toLocaleString('es-AR', {minimumFractionDigits: 2})}</span>
                 </div>
                 <div className="flex justify-between items-center text-sm">
-                    <span className="text-gray-600">Total Pagos:</span>
-                    <span className="text-green-600">- ${totalPagos.toLocaleString('es-AR', {minimumFractionDigits: 2})}</span>
+                    <span className="text-gray-600">Total Entregado:</span>
+                    <span className="text-green-600">- ${totalPagadoEfectivamente.toLocaleString('es-AR', {minimumFractionDigits: 2})}</span>
                 </div>
                 <div className="flex justify-between items-center text-sm">
                     <span className="text-gray-600">Total Gastos:</span>
@@ -440,8 +470,9 @@ export function OperacionesPage() {
                 </div>
             </>
           )}
+          {/* Botón Guardar */}
           <Button onClick={handleGuardarRendicion} className="w-full mt-4 bg-blue-600 hover:bg-blue-700" disabled={isSubmitting || !choferId || loadingChoferes || loadingVehiculos}>
-             {isSubmitting ? (
+             {isSubmitting ? ( /* ... loader ... */
                 <> <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Guardando... </>
              ) : ( 'Guardar Rendición' )}
           </Button>
