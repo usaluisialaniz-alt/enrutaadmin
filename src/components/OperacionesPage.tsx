@@ -1,8 +1,8 @@
-// src/pages/OperacionesPage.tsx (Opción B)
+// src/pages/OperacionesPage.tsx (Opción B - Corregido)
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, X, DollarSign, Loader2, CalendarDays } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button } from '@/components/ui/button'; // Ajusta la ruta si es necesario
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -16,7 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 
-// --- Tipos de Datos (Modificado Pago) ---
+// --- Tipos de Datos ---
 interface Chofer {
   id_chofer: string;
   nombre_completo: string;
@@ -30,13 +30,12 @@ interface Vehiculo {
     tarifa_normal: string | number;
     tarifa_especial: string | number;
 }
-// ¡TIPO PAGO MODIFICADO!
 type Pago = {
-  id: string; // ID temporal
-  monto: string; // Monto efectivamente pagado
+  id: string;
+  monto: string;
   metodo: string;
-  diasNormalesPagados: number | ''; // Días asociados a este pago
-  diasEspecialesPagados: number | ''; // Días asociados a este pago
+  diasNormalesPagados: number | '';
+  diasEspecialesPagados: number | '';
 };
 type Gasto = { id: string; concepto: string; monto: string; };
 
@@ -50,20 +49,16 @@ export function OperacionesPage() {
 
   // --- Estados del formulario ---
   const [choferId, setChoferId] = useState('');
-  // const [montoPagar, setMontoPagar] = useState(''); // <-- ELIMINADO
-  // const [diasNormales, setDiasNormales] = useState<number | '' >(''); // <-- ELIMINADO
-  // const [diasEspeciales, setDiasEspeciales] = useState<number | ''>(''); // <-- ELIMINADO
-  const [pagos, setPagos] = useState<Pago[]>([]); // Usará el tipo Pago modificado
+  const [pagos, setPagos] = useState<Pago[]>([]);
   const [gastos, setGastos] = useState<Gasto[]>([]);
 
   // --- Estados para UI y feedback ---
   const [mensaje, setMensaje] = useState<{ tipo: 'success' | 'error'; texto: string } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // --- Carga de Datos Inicial (Sin Cambios) ---
+  // --- Carga de Datos Inicial ---
   useEffect(() => {
-    // --- Pegar aquí las funciones fetchChoferes y fetchVehiculos ---
-     // Cargar Choferes
+    // Cargar Choferes
     const fetchChoferes = async () => {
       setLoadingChoferes(true);
       try {
@@ -71,7 +66,7 @@ export function OperacionesPage() {
         if (!response.ok) throw new Error('Error al cargar chóferes');
         const data = await response.json();
         if (Array.isArray(data.choferes)) {
-          setChoferes(data.choferes); // No filtramos aquí para mostrar deuda de inactivos si es necesario
+          setChoferes(data.choferes);
         } else { throw new Error('Formato de chóferes inesperado'); }
       } catch (err) {
         setMensaje({ tipo: 'error', texto: err instanceof Error ? err.message : 'Error desconocido al cargar chóferes' });
@@ -106,7 +101,7 @@ export function OperacionesPage() {
       return vehiculos.find((v) => v.id_vehiculo === choferSeleccionado.vehiculo_asignado_id);
   }, [choferId, choferes, vehiculos]);
 
-  // --- ¡NUEVO! Cálculo del Monto *DEBIDO* basado en los días de TODOS los pagos ---
+  // Cálculo del Monto DEBIDO basado en los días de TODOS los pagos
   const montoTotalDebidoJornada = useMemo(() => {
     if (!vehiculoActivo) return 0;
     const tarifaN = parseFloat(String(vehiculoActivo.tarifa_normal)) || 0;
@@ -121,78 +116,61 @@ export function OperacionesPage() {
   }, [pagos, vehiculoActivo]);
 
 
-  // --- Handlers para Pagos (Modificado) ---
+  // --- Handlers para Pagos ---
   const handleAgregarPago = (montoInicial = '') => {
-    // Añade los nuevos campos de días
     setPagos([...pagos, {
         id: Date.now().toString(),
         monto: montoInicial,
         metodo: 'Efectivo',
-        diasNormalesPagados: '', // Inicia vacío
-        diasEspecialesPagados: '', // Inicia vacío
+        diasNormalesPagados: '',
+        diasEspecialesPagados: '',
     }]);
   };
   const handleEliminarPago = (id: string) => setPagos(pagos.filter((p) => p.id !== id));
-  // ¡MODIFICADO para aceptar los nuevos campos!
   const handleActualizarPago = (id: string, campo: keyof Pago, valor: string | number) => {
-    // Validación específica para montos y días
-    if ((campo === 'monto') && valor !== '' && !/^\d*\.?\d*$/.test(String(valor))) {
-        return; // No actualizar si no es un número válido
-    }
+    if ((campo === 'monto') && valor !== '' && !/^\d*\.?\d*$/.test(String(valor))) return;
      if ((campo === 'diasNormalesPagados' || campo === 'diasEspecialesPagados')) {
          const strValor = String(valor);
-         if (strValor !== '' && !/^\d+$/.test(strValor)) {
-             return; // No actualizar si no es vacío o entero positivo
-         }
-         // Convertimos a número o mantenemos vacío
+         if (strValor !== '' && !/^\d+$/.test(strValor)) return;
          valor = strValor === '' ? '' : parseInt(strValor, 10);
      }
-
-    setPagos(pagos.map((p) => (p.id === id ? { ...p, [campo]: valor } : p)));
+    setPagos(pagos.map((p) => (p.id === id ? { ...p, [campo]: String(valor) } : p))); // Asegura que valor sea string para el input
   };
 
-  // --- Handlers para Gastos (sin cambios lógicos) ---
-  const handleAgregarGasto = () => { /* ... sin cambios ... */ };
-  const handleEliminarGasto = (id: string) => { /* ... sin cambios ... */ };
-  const handleActualizarGasto = (id: string, campo: 'concepto' | 'monto', valor: string) => { /* ... sin cambios ... */ };
-   // --- Pegar aquí las 3 funciones de handlers de gastos ---
-    const handleAgregarGasto = () => setGastos([...gastos, { id: Date.now().toString(), concepto: '', monto: '' }]);
-    const handleEliminarGasto = (id: string) => setGastos(gastos.filter((g) => g.id !== id));
-    const handleActualizarGasto = (id: string, campo: 'concepto' | 'monto', valor: string) => {
-         // Validación para monto: permitir solo números y un punto decimal
-        if (campo === 'monto' && valor !== '' && !/^\d*\.?\d*$/.test(valor)) {
-            return; // No actualizar si no es un número válido
-        }
-        setGastos(gastos.map((g) => (g.id === id ? { ...g, [campo]: valor } : g)));
-    };
+  // --- Handlers para Gastos (DEFINIDOS UNA SOLA VEZ) ---
+  const handleAgregarGasto = () => {
+      setGastos([...gastos, { id: Date.now().toString(), concepto: '', monto: '' }]);
+  };
+  const handleEliminarGasto = (id: string) => {
+      setGastos(gastos.filter((g) => g.id !== id));
+  };
+  const handleActualizarGasto = (id: string, campo: 'concepto' | 'monto', valor: string) => {
+      if (campo === 'monto' && valor !== '' && !/^\d*\.?\d*$/.test(valor)) return;
+      setGastos(gastos.map((g) => (g.id === id ? { ...g, [campo]: valor } : g)));
+  };
 
-  // --- Handler para Guardar Rendición (Modificado) ---
+  // --- Handler para Guardar Rendición ---
   const handleGuardarRendicion = async () => {
     setMensaje(null);
-    if (!choferId) { /* ... validación chofer ... */ return; }
-    if (!vehiculoActivo) { /* ... validación vehículo ... */ return; }
+    if (!choferId) { setMensaje({ tipo: 'error', texto: 'Debe seleccionar un chofer' }); return; }
+    if (!vehiculoActivo) { setMensaje({ tipo: 'error', texto: 'Chofer sin vehículo asignado' }); return; }
 
-    // Validación: Al menos debe haber pagos con días/monto o gastos con monto
     const tienePagosValidos = pagos.some(p => (Number(p.diasNormalesPagados) > 0 || Number(p.diasEspecialesPagados) > 0 || parseFloat(p.monto) > 0));
     const tieneGastosValidos = gastos.some(g => g.concepto && parseFloat(g.monto) > 0);
-
     if (!tienePagosValidos && !tieneGastosValidos) {
-        setMensaje({ tipo: 'error', texto: 'Debe ingresar al menos un pago (con días o monto) o un gasto válido.' });
+        setMensaje({ tipo: 'error', texto: 'Debe ingresar pagos (con días/monto) o gastos.' });
         return;
     }
 
     setIsSubmitting(true);
 
-    // El montoAPagar ahora se calcula en el backend basado en los días enviados en 'pagos'
     const datosParaApi = {
         choferId: choferId,
         vehiculoId: vehiculoActivo.id_vehiculo,
-        // montoAPagar: montoTotalDebidoJornada, // Ya no se envía pre-calculado
         pagos: pagos
-                .filter(p => parseFloat(p.monto) > 0 || Number(p.diasNormalesPagados) > 0 || Number(p.diasEspecialesPagados) > 0) // Filtra pagos realmente útiles
-                .map(({id, ...rest}) => ({ // Quitamos ID temporal
+                .filter(p => parseFloat(p.monto) > 0 || Number(p.diasNormalesPagados) > 0 || Number(p.diasEspecialesPagados) > 0)
+                .map(({id, ...rest}) => ({
                     ...rest,
-                    // Aseguramos enviar números
                     monto: parseFloat(rest.monto) || 0,
                     diasNormalesPagados: Number(rest.diasNormalesPagados) || 0,
                     diasEspecialesPagados: Number(rest.diasEspecialesPagados) || 0,
@@ -205,7 +183,7 @@ export function OperacionesPage() {
     console.log("Enviando a /api/saveRendicion (Opción B):", datosParaApi);
 
     try {
-        const response = await fetch('/api/saveRendicion', { /* ... fetch options ... */
+        const response = await fetch('/api/saveRendicion', {
              method: 'POST',
              headers: { 'Content-Type': 'application/json' },
              body: JSON.stringify(datosParaApi),
@@ -215,32 +193,33 @@ export function OperacionesPage() {
         setMensaje({ tipo: 'success', texto: result.message || 'Rendición guardada' });
 
         setTimeout(() => {
-          setChoferId('');
+          setChoferId(''); // Resetea el chofer, lo que limpiará casi todo
           setPagos([]);
           setGastos([]);
           setMensaje(null);
+          // Opcional: Recargar lista de choferes si la deuda se muestra ahí
+          // const fetchChoferes = async () => { /* ... */ }; fetchChoferes();
         }, 2500);
 
-    } catch (err) { /* ... manejo de error sin cambios ... */
+    } catch (err) {
         console.error("Error al guardar:", err);
-        setMensaje({ tipo: 'error', texto: err instanceof Error ? err.message : 'Error desconocido' });
+        setMensaje({ tipo: 'error', texto: err instanceof Error ? err.message : 'Error desconocido al guardar' });
     } finally {
         setIsSubmitting(false);
     }
   };
 
-  // --- Cálculos para Resumen (Modificado) ---
-  const totalPagadoEfectivamente = pagos.reduce((sum, p) => sum + (parseFloat(p.monto) || 0), 0); // Lo que realmente entregó
+  // --- Cálculos para Resumen ---
+  const totalPagadoEfectivamente = pagos.reduce((sum, p) => sum + (parseFloat(p.monto) || 0), 0);
   const totalGastos = gastos.reduce((sum, g) => sum + (parseFloat(g.monto) || 0), 0);
   const deudaActual = parseFloat(String(choferSeleccionado?.deuda_actual)) || 0;
-  // La deuda final ahora se basa en el monto DEBIDO por los días vs lo pagado
   const deudaFinal = deudaActual + montoTotalDebidoJornada - totalPagadoEfectivamente - totalGastos;
 
-  // --- JSX (Modificado Significativamente) ---
+  // --- JSX ---
   return (
     <div className="max-w-5xl mx-auto space-y-4 p-4 md:p-6">
       {/* Mensaje de Alerta */}
-      {mensaje && ( /* ... JSX sin cambios ... */
+      {mensaje && (
          <Alert variant={mensaje.tipo === 'error' ? 'destructive' : 'default'} className="mb-4">
            <AlertTitle>{mensaje.tipo === 'error' ? 'Error' : 'Éxito'}</AlertTitle>
           <AlertDescription>{mensaje.texto}</AlertDescription>
@@ -255,9 +234,8 @@ export function OperacionesPage() {
             {/* Selector de Chofer */}
             <div className="space-y-1">
               <Label htmlFor="chofer">Chofer</Label>
-               {/* ... JSX del Select de Chofer sin cambios ... */}
                 {loadingChoferes ? (<p className="text-sm text-gray-500">Cargando chóferes...</p>) : (
-                <Select value={choferId} onValueChange={(value) => {setChoferId(value); /* No reseteamos días aquí */}} disabled={isSubmitting}>
+                <Select value={choferId} onValueChange={(value) => {setChoferId(value); setPagos([]); setGastos([]);}} disabled={isSubmitting}> {/* Limpia pagos/gastos al cambiar chofer */}
                   <SelectTrigger id="chofer"><SelectValue placeholder="Seleccionar chofer" /></SelectTrigger>
                   <SelectContent>
                     {choferes
@@ -283,8 +261,7 @@ export function OperacionesPage() {
             {/* Vehículo Asignado */}
             <div className="space-y-1">
               <Label htmlFor="vehiculo-asignado">Vehículo Asignado</Label>
-               {/* ... JSX del Input de Vehículo sin cambios ... */}
-                {loadingVehiculos ? (<p className="text-sm text-gray-500">Cargando...</p>) : (
+                {loadingVehiculos ? (<p className="text-sm text-gray-500">Cargando vehículos...</p>) : (
                 <Input
                     id="vehiculo-asignado"
                     value={vehiculoActivo?.nombre_visible || (choferId ? (loadingVehiculos ? 'Cargando...' : 'No asignado') : 'Seleccione chofer')}
@@ -301,11 +278,10 @@ export function OperacionesPage() {
                  )}
             </div>
           </div>
-          {/* --- SECCIÓN DE MONTO A PAGAR Y BOTONES ELIMINADA --- */}
         </CardContent>
       </Card>
 
-      {/* --- SECCIÓN DE PAGOS MODIFICADA --- */}
+      {/* Sección de Pagos y Días Rendidos */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -314,15 +290,15 @@ export function OperacionesPage() {
               <Plus className="w-4 h-4 mr-1" /> Agregar Fila
             </Button>
           </div>
-           <p className="text-xs text-gray-500 pt-1">Registre aquí el dinero entregado y los días que corresponden a ese pago.</p>
+           <p className="text-xs text-gray-500 pt-1">Registre el dinero entregado y los días correspondientes.</p>
         </CardHeader>
         <CardContent>
           {pagos.length === 0 ? (
             <p className="text-sm text-gray-500 text-center py-3">No hay pagos/días registrados.</p>
           ) : (
-            <div className="space-y-3"> {/* Aumentado space */}
+            <div className="space-y-3">
               {pagos.map((pago) => (
-                <div key={pago.id} className="grid grid-cols-1 md:grid-cols-10 gap-2 items-end p-3 bg-gray-50 rounded-lg dynamic-row"> {/* Usamos grid */}
+                <div key={pago.id} className="grid grid-cols-1 md:grid-cols-10 gap-2 items-end p-3 bg-gray-50 rounded-lg dynamic-row">
                   {/* Días Normales */}
                   <div className="md:col-span-2 space-y-1">
                     <Label htmlFor={`dn-${pago.id}`} className="text-xs text-gray-600 flex items-center">
@@ -384,7 +360,7 @@ export function OperacionesPage() {
                   </span>
                 </div>
                  <div className="text-right">
-                  <span className="text-gray-600">Total $ Pagado: </span>
+                  <span className="text-gray-600">Total Pagado: </span>
                   <span className="font-medium text-green-600">${totalPagadoEfectivamente.toLocaleString('es-AR', {minimumFractionDigits: 2})}</span>
                 </div>
               </div>
@@ -392,12 +368,9 @@ export function OperacionesPage() {
           )}
         </CardContent>
       </Card>
-      {/* --- FIN SECCIÓN PAGOS MODIFICADA --- */}
-
 
       {/* Sección de Gastos */}
       <Card>
-           {/* ... JSX sin cambios (CardHeader, map de gastos, Total Gastos) ... */}
             <CardHeader>
                 <div className="flex items-center justify-between">
                     <CardTitle className="text-lg">Gastos</CardTitle>
@@ -438,10 +411,10 @@ export function OperacionesPage() {
             </CardContent>
       </Card>
 
-      {/* Resumen y Botón Guardar (Modificado) */}
+      {/* Resumen y Botón Guardar */}
       <Card className="bg-gray-50">
         <CardContent className="pt-4 space-y-2">
-          {choferId && vehiculoActivo && ( // Muestra solo si hay chofer y vehículo
+          {choferId && vehiculoActivo && (
             <>
                 <div className="flex justify-between items-center text-sm">
                     <span className="text-gray-600">Deuda Anterior:</span>
@@ -449,7 +422,6 @@ export function OperacionesPage() {
                     ${deudaActual.toLocaleString('es-AR', {minimumFractionDigits: 2})}
                     </span>
                 </div>
-                {/* Mostramos Monto DEBIDO por los días */}
                 <div className="flex justify-between items-center text-sm">
                     <span className="text-gray-600">Monto Jornada (por días):</span>
                     <span>+ ${montoTotalDebidoJornada.toLocaleString('es-AR', {minimumFractionDigits: 2})}</span>
@@ -470,9 +442,8 @@ export function OperacionesPage() {
                 </div>
             </>
           )}
-          {/* Botón Guardar */}
           <Button onClick={handleGuardarRendicion} className="w-full mt-4 bg-blue-600 hover:bg-blue-700" disabled={isSubmitting || !choferId || loadingChoferes || loadingVehiculos}>
-             {isSubmitting ? ( /* ... loader ... */
+             {isSubmitting ? (
                 <> <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Guardando... </>
              ) : ( 'Guardar Rendición' )}
           </Button>
