@@ -6,6 +6,7 @@ import { ChoferesPage } from './components/ChoferesPage';
 import { HistorialPage } from './components/HistorialPage';
 import { CajaPage } from './components/CajaPage';
 import { Button } from './components/ui/button';
+import '@/styles/calendar.css'; 
 
 type Module = 'operaciones' | 'caja' | 'flota' | 'choferes' | 'historial';
 

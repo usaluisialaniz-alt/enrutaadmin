@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "composite": true, // Permite que otros tsconfig.json lo referencien
+    "skipLibCheck": true, // Evita revisar tipos en librerías externas
+    "module": "ESNext", // Usa el sistema de módulos moderno
+    "moduleResolution": "bundler", // O "node", resolución moderna para bundlers
+    "allowSyntheticDefaultImports": true, // Permite importaciones default más limpias
+    "strict": true // Habilita chequeos estrictos
+  },
+  "include": ["vite.config.ts"] // Indica que esta config aplica a vite.config.ts
+}

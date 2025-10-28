@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ESNext", // Usa la versión más reciente de JavaScript
+    "useDefineForClassFields": true,
+    "lib": ["DOM", "DOM.Iterable", "ESNext"], // Bibliotecas estándar disponibles
+    "allowJs": false, // No permitir archivos JS (opcional, pero bueno para TS puro)
+    "skipLibCheck": true, // No verificar tipos en archivos de declaración (.d.ts)
+    "esModuleInterop": true, // Mejora la compatibilidad entre módulos CommonJS y ES
+    "allowSyntheticDefaultImports": true, // Permite importar default como 'import React from "react"'
+    "strict": true, // Habilita todas las verificaciones estrictas de tipos (recomendado)
+    "forceConsistentCasingInFileNames": true, // Asegura que las mayúsculas/minúsculas coincidan en los nombres de archivo
+    "module": "ESNext", // Usa el sistema de módulos moderno
+    "moduleResolution": "bundler", // O "node", cómo encontrar los módulos (bundler es moderno para Vite)
+    "resolveJsonModule": true, // Permite importar archivos .json
+    "isolatedModules": true, // Asegura que cada archivo pueda compilarse por separado
+    "noEmit": true, // No generar archivos JS (Vite/Babel se encargan de eso)
+    "jsx": "react-jsx", // <-- ¡LA OPCIÓN CLAVE QUE FALTABA! Le dice a TS cómo manejar JSX
+
+    /* Configuración de Rutas (la que ya tenías) */
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"] // Mapea '@/' a la carpeta 'src/'
+    }
+  },
+  "include": ["src"], // Qué carpetas incluir en la compilación
+  "references": [{ "path": "./tsconfig.node.json" }] // Referencia a la config de Node (común en Vite)
+}

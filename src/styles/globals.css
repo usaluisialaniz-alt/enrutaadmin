@@ -1,3 +1,10 @@
+/* src/index.css o src/globals.css */
+/* src/index.css o src/globals.css */
+@import "tailwindcss/preflight"; /* Reemplaza @tailwind base */
+@import "tailwindcss/components"; /* Reemplaza @tailwind components */
+@import "tailwindcss/utilities"; /* Reemplaza @tailwind utilities */
+
+/* ... (tus otros estilos globales pueden ir después) ... */
 @custom-variant dark (&:is(.dark *));
 
 :root {
