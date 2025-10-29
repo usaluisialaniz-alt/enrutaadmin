@@ -218,7 +218,7 @@ export function OperacionesPage() {
   const totalPagadoEfectivamente = pagos.reduce((sum, p) => sum + (parseFloat(p.monto) || 0), 0);
   const totalGastos = gastos.reduce((sum, g) => sum + (parseFloat(g.monto) || 0), 0);
   const deudaActual = parseFloat(String(choferSeleccionado?.deuda_actual)) || 0;
-  const deudaFinal = deudaActual + montoCalculadoJornada - totalPagadoEfectivamente - totalGastos;
+  const deudaFinal = deudaActual + montoCalculadoJornada - totalPagadoEfectivamente ;
 
   // --- JSX ---
   return (
