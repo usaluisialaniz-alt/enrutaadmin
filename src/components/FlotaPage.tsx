@@ -1,140 +1,229 @@
-import { Car, Plus, Edit, Trash2 } from 'lucide-react';
-import { Button } from './ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from './ui/table';
-import { Badge } from './ui/badge';
+import React, { useState, useEffect, useRef } from 'react';
+import { Car, Plus, Edit, Trash2, Loader2, RefreshCw } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import ActionModal from '../components/ui/ActionModal';
+import VehiculoForm, { VehiculoFormData, VehiculoFormHandle } from '../components/forms/VehiculoForm';
 
-const vehiculos = [
-  {
-    id: '1',
-    nombreVisible: 'Corolla ABC123',
-    patente: 'ABC123',
-    tarifaNormal: 56000,
-    tarifaEspecial: 35000,
-    estado: 'activo',
-  },
-  {
-    id: '2',
-    nombreVisible: 'Cruze XYZ789',
-    patente: 'XYZ789',
-    tarifaNormal: 60000,
-    tarifaEspecial: 38000,
-    estado: 'activo',
-  },
-  {
-    id: '3',
-    nombreVisible: 'Etios DEF456',
-    patente: 'DEF456',
-    tarifaNormal: 50000,
-    tarifaEspecial: 32000,
-    estado: 'activo',
-  },
-  {
-    id: '4',
-    nombreVisible: 'Gol GHI789',
-    patente: 'GHI789',
-    tarifaNormal: 48000,
-    tarifaEspecial: 30000,
-    estado: 'mantenimiento',
-  },
-  {
-    id: '5',
-    nombreVisible: 'Focus JKL012',
-    patente: 'JKL012',
-    tarifaNormal: 58000,
-    tarifaEspecial: 36000,
-    estado: 'inactivo',
-  },
-];
+interface Vehiculo {
+id_vehiculo: string;
+nombre_visible: string;
+patente: string;
+chofer: string | null;
+tarifa_normal: string | number;
+tarifa_especial: string | number;
+estado: string;
+}
+
+interface ModalState {
+isOpen: boolean;
+type: 'add' | 'edit' | 'delete';
+vehiculo: Vehiculo | null;
+}
 
 export function FlotaPage() {
-  return (
-    <div className="max-w-6xl mx-auto">
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <Car className="w-6 h-6 text-blue-600" />
-              <CardTitle>Gestión de Flota</CardTitle>
-            </div>
-            <Button className="bg-blue-600 hover:bg-blue-700">
-              <Plus className="w-4 h-4 mr-2" />
-              Agregar Vehículo
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nombre Visible</TableHead>
-                  <TableHead>Patente</TableHead>
-                  <TableHead className="text-right">Tarifa Normal</TableHead>
-                  <TableHead className="text-right">Tarifa Especial</TableHead>
-                  <TableHead>Estado</TableHead>
-                  <TableHead className="text-right">Acciones</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {vehiculos.map((vehiculo) => (
-                  <TableRow key={vehiculo.id}>
-                    <TableCell>{vehiculo.nombreVisible}</TableCell>
-                    <TableCell>{vehiculo.patente}</TableCell>
-                    <TableCell className="text-right">
-                      ${vehiculo.tarifaNormal.toLocaleString('es-AR')}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      ${vehiculo.tarifaEspecial.toLocaleString('es-AR')}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={
-                          vehiculo.estado === 'activo'
-                            ? 'default'
-                            : vehiculo.estado === 'mantenimiento'
-                            ? 'secondary'
-                            : 'outline'
-                        }
-                        className={
-                          vehiculo.estado === 'activo'
-                            ? 'bg-green-100 text-green-800 hover:bg-green-100'
-                            : vehiculo.estado === 'mantenimiento'
-                            ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-100'
-                            : 'bg-gray-100 text-gray-800 hover:bg-gray-100'
-                        }
-                      >
-                        {vehiculo.estado === 'activo'
-                          ? 'Activo'
-                          : vehiculo.estado === 'mantenimiento'
-                          ? 'Mantenimiento'
-                          : 'Inactivo'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end space-x-2">
-                        <Button variant="ghost" size="icon">
-                          <Edit className="w-4 h-4 text-blue-600" />
-                        </Button>
-                        <Button variant="ghost" size="icon">
-                          <Trash2 className="w-4 h-4 text-red-600" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
+const [vehiculos, setVehiculos] = useState<Vehiculo[]>([]);
+const [loading, setLoading] = useState(true);
+const [error, setError] = useState<string | null>(null);
+const [isRefreshing, setIsRefreshing] = useState(false);
+const [isSubmitting, setIsSubmitting] = useState(false);
+const [modalState, setModalState] = useState<ModalState>({ isOpen: false, type: 'add', vehiculo: null });
+const formRef = useRef<VehiculoFormHandle>(null);
+
+const fetchVehiculos = async () => {
+setError(null);
+try {
+const response = await fetch('/api/getVehiculos');
+if (!response.ok) throw new Error(`Error HTTP: ${response.status}`);
+const data = await response.json();
+setVehiculos(Array.isArray(data.vehiculos) ? data.vehiculos : []);
+} catch (e) {
+setError(e instanceof Error ? e.message : String(e));
+} finally {
+setLoading(false);
+setIsRefreshing(false);
+}
+};
+
+useEffect(() => {
+setLoading(true);
+fetchVehiculos();
+}, []);
+
+const handleRefresh = () => {
+if (!isRefreshing) {
+setIsRefreshing(true);
+fetchVehiculos();
+}
+};
+
+const handleAdd = () => setModalState({ isOpen: true, type: 'add', vehiculo: null });
+const handleEdit = (vehiculo: Vehiculo) => setModalState({ isOpen: true, type: 'edit', vehiculo });
+const handleDelete = (vehiculo: Vehiculo) => setModalState({ isOpen: true, type: 'delete', vehiculo });
+const handleCloseModal = () => setModalState({ isOpen: false, type: 'add', vehiculo: null });
+
+// ✅ LLAMADAS REALES A LA API
+const handleFormSubmit = async (formData: VehiculoFormData) => {
+setIsSubmitting(true);
+setError(null);
+
+
+const dataToSend = {
+  nombre_visible: formData.nombre_visible,
+  patente: formData.patente.toUpperCase(),
+  tarifa_normal: Number(formData.tarifa_normal) || 0,
+  tarifa_especial: Number(formData.tarifa_especial) || 0,
+  estado: formData.estado,
+};
+
+try {
+  let response;
+  if (modalState.type === 'add') {
+    response = await fetch('/api/vehiculos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(dataToSend),
+    });
+  } else if (modalState.type === 'edit' && modalState.vehiculo) {
+    response = await fetch(`/api/vehiculos/${modalState.vehiculo.id_vehiculo}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(dataToSend),
+    });
+  } else {
+    throw new Error('Acción inválida.');
+  }
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error || `Error HTTP ${response.status}`);
+  }
+
+  await fetchVehiculos();
+  handleCloseModal();
+} catch (e) {
+  setError(e instanceof Error ? e.message : 'Error desconocido al guardar.');
+} finally {
+  setIsSubmitting(false);
+}
+
+
+};
+
+const handleDeleteConfirm = async () => {
+if (!modalState.vehiculo) return;
+setIsSubmitting(true);
+setError(null);
+try {
+const response = await fetch(`/api/vehiculos/${modalState.vehiculo.id_vehiculo}`, { method: 'DELETE' });
+if (!response.ok) throw new Error(`Error HTTP ${response.status}`);
+await fetchVehiculos();
+handleCloseModal();
+} catch (e) {
+setError(e instanceof Error ? e.message : 'Error al eliminar vehículo.');
+} finally {
+setIsSubmitting(false);
+}
+};
+
+const handleModalConfirm = () => {
+if (modalState.type === 'delete') handleDeleteConfirm();
+else if (formRef.current) formRef.current.submit();
+};
+
+const tableContent =
+loading && vehiculos.length === 0 ? ( <TableRow> <TableCell colSpan={7} className="text-center py-8"> <Loader2 className="h-6 w-6 animate-spin inline-block mr-2 text-blue-500" /> Cargando... </TableCell> </TableRow>
+) : error && vehiculos.length === 0 ? ( <TableRow> <TableCell colSpan={7} className="text-center text-red-600 py-8"> <strong>Error:</strong> {error} </TableCell> </TableRow>
+) : vehiculos.length === 0 ? ( <TableRow> <TableCell colSpan={7} className="text-center py-8 text-gray-500">
+No hay vehículos. </TableCell> </TableRow>
+) : (
+vehiculos.map((v) => ( <TableRow key={v.id_vehiculo}> <TableCell>{v.nombre_visible}</TableCell> <TableCell>{v.patente}</TableCell> <TableCell>{v.chofer || 'Sin Asignar'}</TableCell> <TableCell className="text-right">${v.tarifa_normal}</TableCell> <TableCell className="text-right">${v.tarifa_especial}</TableCell> <TableCell>
+<Badge
+className={
+v.estado === 'activo'
+? 'bg-green-100 text-green-800'
+: v.estado === 'mantenimiento'
+? 'bg-yellow-100 text-yellow-800'
+: 'bg-gray-100 text-gray-800'
+}
+>
+{v.estado} </Badge> </TableCell> <TableCell className="text-right"> <div className="flex justify-end space-x-1">
+<Button variant="ghost" size="icon" onClick={() => handleEdit(v)} disabled={isSubmitting}> <Edit className="w-4 h-4 text-blue-600" /> </Button>
+<Button variant="ghost" size="icon" onClick={() => handleDelete(v)} disabled={isSubmitting}> <Trash2 className="w-4 h-4 text-red-600" /> </Button> </div> </TableCell> </TableRow>
+))
+);
+
+return ( <div className="max-w-7xl mx-auto p-4 md:p-6"> <Card> <CardHeader> <div className="flex justify-between items-center"> <div className="flex items-center space-x-2"> <Car className="w-5 h-5 text-blue-600" /> <CardTitle>Gestión de Flota</CardTitle> </div> <div className="flex space-x-2"> <Button className="bg-blue-600 text-white" onClick={handleAdd} disabled={isSubmitting}> <Plus className="w-4 h-4 mr-1" /> Agregar Vehículo </Button>
+<Button variant="outline" size="icon" onClick={handleRefresh} disabled={isRefreshing || isSubmitting}>
+{isRefreshing ? <Loader2 className="w-4 h-4 animate-spin text-blue-500" /> : <RefreshCw className="w-4 h-4" />} </Button> </div> </div> </CardHeader>
+    <CardContent>
+      <div className="rounded-md border overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Nombre Visible</TableHead>
+              <TableHead>Patente</TableHead>
+              <TableHead>Chofer</TableHead>
+              <TableHead className="text-right">T. Normal</TableHead>
+              <TableHead className="text-right">T. Especial</TableHead>
+              <TableHead>Estado</TableHead>
+              <TableHead className="text-right">Acciones</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>{tableContent}</TableBody>
+        </Table>
+      </div>
+    </CardContent>
+  </Card>
+
+  <ActionModal
+    isOpen={modalState.isOpen}
+    onClose={handleCloseModal}
+    onConfirm={handleModalConfirm}
+    isConfirming={isSubmitting}
+    type={modalState.type}
+    title={
+      modalState.type === 'add'
+        ? 'Agregar Nuevo Vehículo'
+        : modalState.type === 'edit'
+        ? `Editar Vehículo: ${modalState.vehiculo?.nombre_visible}`
+        : 'Confirmar Eliminación'
+    }
+    confirmLabel={
+      modalState.type === 'delete'
+        ? 'Eliminar'
+        : modalState.type === 'add'
+        ? 'Guardar Vehículo'
+        : 'Guardar Cambios'
+    }
+  >
+    {modalState.type !== 'delete' ? (
+      <VehiculoForm
+        ref={formRef}
+        onSubmit={handleFormSubmit}
+        defaultValues={
+          modalState.vehiculo
+            ? {
+                id_vehiculo: modalState.vehiculo.id_vehiculo,
+                nombre_visible: modalState.vehiculo.nombre_visible,
+                patente: modalState.vehiculo.patente,
+                tarifa_normal: Number(modalState.vehiculo.tarifa_normal),
+                tarifa_especial: Number(modalState.vehiculo.tarifa_especial),
+                estado: modalState.vehiculo.estado as 'activo' | 'mantenimiento' | 'inactivo',
+              }
+            : { nombre_visible: '', patente: '', tarifa_normal: 0, tarifa_especial: 0, estado: 'activo' }
+        }
+        isLoading={isSubmitting}
+      />
+    ) : (
+      <p className="text-sm text-gray-700">
+        ¿Está seguro de que desea eliminar el vehículo {modalState.vehiculo?.nombre_visible} (
+        {modalState.vehiculo?.patente})?
+      </p>
+    )}
+  </ActionModal>
+</div>
+);
 }
