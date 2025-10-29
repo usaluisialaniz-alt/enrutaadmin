@@ -188,7 +188,7 @@ module.exports = async (req, res) => {
             // Asume Monto a Pagar = Tarifa
             const montoPagar = tarifa;
             // DeudaFinal = (Deuda Anterior + Monto a Pagar) - Total Pagado - Gastos
-            const deudaFinal = (deudaAnterior + montoPagar) - totalPagado - gastos;
+            const deudaFinal = (deudaAnterior + montoPagar) - totalPagado;
 
             // Log detallado por fila para depurar cálculo
             // console.log(`Fila ${index + 2}: ID=${rendicionId}, DA=${deudaAnterior}, MP=${montoPagar}, TP=${totalPagado}, G=${gastos} -> DF=${deudaFinal}`);
