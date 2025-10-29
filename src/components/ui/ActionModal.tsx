@@ -1,18 +1,19 @@
-// src/components/ActionModal.tsx
-import React from 'react';
-import { Button } from '@/components/ui/button'; // 👈 RUTA CORREGIDA: De './ui/button' a '@/components/ui/button'
+// src/components/ui/ActionModal.tsx
+// Nota: La ruta de importación de Button se corrigió previamente
+import React, { useRef } from 'react';
+import { Button } from '@/components/ui/button'; 
 import { Trash2, Edit, Plus } from 'lucide-react';
-// Simulamos un componente Dialog/Modal simple con Tailwind para reemplazar Shadcn Dialog
 
 interface ActionModalProps {
   isOpen: boolean;
   onClose: () => void;
   title: string;
-  description: string;
+  description?: string; // Descripción opcional, ya que el form puede tenerla
   confirmLabel: string;
-  onConfirm: () => void;
+  onConfirm: () => void; // El modal solo llama a onConfirm
   type: 'add' | 'edit' | 'delete';
-  children?: React.ReactNode;
+  children?: React.ReactNode; // Para renderizar el formulario
+  isConfirming?: boolean; // Para mostrar estado de carga en el botón Confirmar
 }
 
 const ActionModal: React.FC<ActionModalProps> = ({
@@ -24,6 +25,7 @@ const ActionModal: React.FC<ActionModalProps> = ({
   onConfirm,
   type,
   children,
+  isConfirming = false, // Valor por defecto
 }) => {
   if (!isOpen) return null;
 
@@ -34,31 +36,47 @@ const ActionModal: React.FC<ActionModalProps> = ({
   };
 
   const { icon: Icon, bgColor, hoverBg } = typeStyles[type];
+  
+  // Ref para detectar clics fuera del modal y cerrarlo
+  const modalRef = useRef<HTMLDivElement>(null);
+  const handleOutsideClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (modalRef.current === event.target) {
+      onClose();
+    }
+  };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4 transition-opacity duration-300">
-      <div className="bg-white rounded-lg shadow-2xl w-full max-w-md p-6">
+    <div 
+      ref={modalRef}
+      onClick={handleOutsideClick}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 p-4 transition-opacity duration-300 backdrop-blur-sm"
+    >
+      <div className="bg-white rounded-lg shadow-2xl w-full max-w-lg p-6 transform transition-transform duration-300 scale-100 animate-in fade-in-0 zoom-in-95">
         {/* Header */}
-        <div className="flex items-center space-x-3 mb-4">
+        <div className="flex items-center space-x-3 mb-4 border-b pb-3">
           <Icon className={`w-6 h-6 ${type === 'delete' ? 'text-red-600' : 'text-blue-600'}`} />
-          <h3 className="text-xl font-semibold">{title}</h3>
+          <h3 className="text-xl font-semibold text-gray-800">{title}</h3>
         </div>
         
         {/* Content */}
-        <p className="text-sm text-gray-700 mb-6">{description}</p>
+        {description && <p className="text-sm text-gray-700 mb-6">{description}</p>}
         
-        {children} {/* Aquí iría el formulario de edición/creación */}
+        {/* Renderiza el formulario (o el mensaje de confirmación) */}
+        <div className="max-h-[60vh] overflow-y-auto pr-2"> {/* Permite scroll si el form es largo */}
+            {children}
+        </div>
 
         {/* Footer */}
-        <div className="flex justify-end space-x-3 mt-6">
-          <Button variant="outline" onClick={onClose} className="text-gray-700">
+        <div className="flex justify-end space-x-3 mt-6 pt-4 border-t">
+          <Button variant="outline" onClick={onClose} disabled={isConfirming} className="text-gray-700">
             Cancelar
           </Button>
-          <Button 
-            className={`${bgColor} ${hoverBg} text-white`} 
-            onClick={onConfirm}
+          <Button  variant="outline"
+            className={`${bgColor} ${hoverBg} text-black`} 
+            onClick={onConfirm} // El botón Confirmar llama a onConfirm (que ahora disparará el submit del form)
+            disabled={isConfirming}
           >
-            {confirmLabel}
+            {isConfirming ? 'Procesando...' : confirmLabel}
           </Button>
         </div>
       </div>
