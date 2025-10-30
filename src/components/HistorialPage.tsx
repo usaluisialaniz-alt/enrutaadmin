@@ -1,4 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect,useMemo } from 'react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { History, Search, Download, Loader2, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,13 +22,14 @@ import { Badge } from '@/components/ui/badge';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 
-// Definir interfaz para los datos del historial (SIN vehiculo)
+// Definir interfaz (con montoTarifa y montoPagar renombrado)
 interface HistorialRegistro {
   id: string;
-  fecha: string; // YYYY-MM-DD
+  fecha: string; 
   chofer: string;
-  // vehiculo: string; // Removido
-  montoPagar: number;
+  vehiculo: string; 
+  montoTarifa: number; 
+  montoPagar: number; 
   totalPagado: number;
   gastos: number;
   deudaAnterior: number;
@@ -29,40 +37,50 @@ interface HistorialRegistro {
 }
 
 export function HistorialPage() {
-  // Estados (sin cambios)
+  
   const [historial, setHistorial] = useState<HistorialRegistro[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedChofer, setSelectedChofer] = useState(''); // '' = Todos 
+
+  const choferesUnicos = useMemo(() => {
+    // 1. Mapea para obtener solo los nombres
+    const nombres = historial.map(r => r.chofer);
+    // 2. Usa 'Set' para obtener solo los únicos y conviértelo de nuevo a un array
+    const unicos = [...new Set(nombres)];
+    // 3. Ordena alfabéticamente
+    return unicos.sort((a, b) => a.localeCompare(b));
+  }, [historial]); // Esta es la "dependencia": solo se re-ejecuta si 'historial' cambia
 
   // --- Lógica de Comunicación con API ---
   const fetchHistorial = async () => {
     setError(null);
+    // No activar loading en refresh para no ocultar tabla
+    // setLoading(true); // <-- Comentado/Eliminado
     try {
-      const response = await fetch('/api/getHistorial'); // Asume que la API sigue devolviendo el objeto como antes
+      const response = await fetch('/api/getHistorial');
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
+        const errorData = await response.json().catch(() => ({error: `Error HTTP ${response.status}`}));
         throw new Error(errorData.error || `Error HTTP: ${response.status}`);
       }
       const data = await response.json();
       if (Array.isArray(data.historial)) {
-        // Mapear los datos recibidos a la nueva interfaz (ignorando vehiculo si viene)
+        // Mapear asegurando que ambos montos existan y sean números
         const mappedData: HistorialRegistro[] = data.historial.map((item: any) => ({
-             id: item.id,
-             fecha: item.fecha,
-             chofer: item.chofer,
-             montoPagar: Number(item.montoPagar) || 0,
+             id: String(item.id || ''), // Asegurar string
+             fecha: item.fecha || 'N/A', // Asegurar string o fallback
+             chofer: item.chofer || 'Desconocido', // Asegurar string o fallback
+             vehiculo: item.vehiculo || '', // Mantener por si acaso
+             montoTarifa: Number(item.montoTarifa) || 0, // ✨ Leer montoTarifa
+             montoPagar: Number(item.montoPagar) || 0, // ✨ Leer montoPagar (Total)
              totalPagado: Number(item.totalPagado) || 0,
              gastos: Number(item.gastos) || 0,
              deudaAnterior: Number(item.deudaAnterior) || 0,
              deudaFinal: Number(item.deudaFinal) || 0,
-             // Ignoramos item.vehiculo
         }));
-
-        const sortedData = mappedData.sort((a, b) =>
-            new Date(b.fecha).getTime() - new Date(a.fecha).getTime()
-        );
+        // Ordenar por fecha (ya viene ordenado de la API, pero doble chequeo)
+        const sortedData = mappedData.sort((a, b) => b.fecha.localeCompare(a.fecha));
         setHistorial(sortedData);
       } else {
         throw new Error("Formato de respuesta inesperado (se esperaba 'historial').");
@@ -70,53 +88,62 @@ export function HistorialPage() {
     } catch (e) {
       console.error("Error al obtener historial:", e);
       setError(e instanceof Error ? e.message : String(e));
+      setHistorial([]); // Limpiar historial en caso de error
     } finally {
-      setLoading(false);
-      setIsRefreshing(false);
+      setLoading(false); // Quitar loading inicial
+      setIsRefreshing(false); // Quitar estado refreshing
     }
   };
 
-  // Carga inicial y Refresh (sin cambios)
-  useEffect(() => { setLoading(true); fetchHistorial(); }, []);
-  const handleRefresh = () => { if (!isRefreshing) { setIsRefreshing(true); fetchHistorial(); } };
+  // Carga inicial
+  useEffect(() => {
+    setLoading(true); // Solo en la carga inicial
+    fetchHistorial();
+  }, []);
 
-  // --- Lógica de Filtrado (SOLO por Chofer) ---
-  const filteredHistorial = historial.filter((registro) => {
-    // Si no hay término de búsqueda, mostrar todo
-    if (!searchTerm.trim()) {
-        return true;
+  // Handler Refresh
+  const handleRefresh = () => {
+    if (!isRefreshing) { // Evitar doble click
+      setIsRefreshing(true);
+      fetchHistorial();
     }
-    const term = searchTerm.toLowerCase();
-    // Filtrar únicamente por el nombre del chofer
-    return registro.chofer.toLowerCase().includes(term);
-  });
+  };
 
+  
 
-  // --- Lógica de Exportación (CSV - SIN Vehiculo) ---
+  // --- Lógica de Filtrado (SOLO por Chofer y Fecha) ---
+  const filteredHistorial = historial.filter((registro) => {
+  // Si no hay ningún chofer seleccionado (es ''), muestra todo.
+  if (!selectedChofer) return true;
+  
+  // Si hay un chofer, muestra solo los registros de ese chofer.
+  return registro.chofer === selectedChofer;
+});
+
+  // --- Lógica de Exportación (CSV - Añadir ambas columnas) ---
    const handleExport = () => {
     if (filteredHistorial.length === 0) return;
-
-    // ✨ Encabezado SIN "Vehiculo" ✨
-    const headers = ["Fecha", "Chofer", "Deuda Anterior", "Monto a Pagar", "Total Pagado", "Gastos", "Deuda Final"];
+    // Encabezado con AMBOS montos
+    const headers = ["Fecha", "Chofer", "Tarifa Calculada", "Saldo Anterior", "Monto Total Pagar", "Total Pagado", "Gastos", "Deuda Final"];
     const rows = filteredHistorial.map(r => [
-      r.fecha,
-      `"${r.chofer.replace(/"/g, '""')}"`,
-      // ✨ Columna Vehiculo REMOVIDA ✨
+      r.fecha, // Fecha en formato YYYY-MM-DD para CSV
+      `"${r.chofer.replace(/"/g, '""')}"`, // Chofer entre comillas y escapado
+      r.montoTarifa, // Añadir Monto Tarifa
       r.deudaAnterior,
-      r.montoPagar,
+      r.montoPagar, // Monto Total a Pagar
       r.totalPagado,
       r.gastos,
       r.deudaFinal
     ]);
-
-    // (Resto de la lógica de exportación sin cambios)
     const csvContent = "data:text/csv;charset=utf-8,"
       + headers.join(",") + "\n"
       + rows.map(e => e.join(",")).join("\n");
+
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `historial_rendiciones_${new Date().toISOString().split('T')[0]}.csv`);
+    // Nombre de archivo con fecha actual
+    link.setAttribute("download", `historial_rendiciones_${format(new Date(), 'yyyy-MM-dd')}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -124,37 +151,53 @@ export function HistorialPage() {
 
   // --- Renderizado de Contenido de la Tabla ---
   let tableContent;
-  const colSpanValue = 7; // ✨ Ajustado el colSpan a 7 (quitamos 1 columna)
+  const colSpanValue = 8; // Ajustado el colSpan a 8
 
-  if (loading && historial.length === 0 && !isRefreshing) {
-    tableContent = ( <TableRow><TableCell colSpan={colSpanValue} className="text-center py-8"><Loader2 className="h-6 w-6 animate-spin inline-block mr-2 text-blue-500" /> Cargando historial...</TableCell></TableRow> );
-  } else if (error && historial.length === 0) {
-    tableContent = ( <TableRow><TableCell colSpan={colSpanValue} className="text-center text-red-600 py-8"><strong>Error al cargar:</strong> {error} <Button variant="link" onClick={handleRefresh}>Reintentar</Button></TableCell></TableRow> );
-  } else if (filteredHistorial.length === 0 && !loading && !error) {
-    tableContent = ( <TableRow><TableCell colSpan={colSpanValue} className="text-center py-8 text-gray-500">{searchTerm ? 'No hay resultados para tu búsqueda.' : 'No hay registros.'}</TableCell></TableRow> );
-  } else {
+  // Mostrar loading grande solo la primera vez o si hay error y se reintenta
+  if (loading && historial.length === 0) {
+     tableContent = ( <TableRow><TableCell colSpan={colSpanValue} className="text-center py-8"><Loader2 className="h-6 w-6 animate-spin inline-block mr-2 text-blue-500" /> Cargando historial...</TableCell></TableRow> );
+  } else if (error && historial.length === 0) { // Mostrar error solo si no hay datos
+     tableContent = ( <TableRow><TableCell colSpan={colSpanValue} className="text-center text-red-600 py-8"><strong>Error al cargar:</strong> {error} <Button variant="link" onClick={handleRefresh}>Reintentar</Button></TableCell></TableRow> );
+  }  else {
+    // Mapear sobre los datos filtrados
     tableContent = filteredHistorial.map((registro) => {
       let fechaFormateada = registro.fecha;
       try {
-         fechaFormateada = format(parseISO(registro.fecha + 'T00:00:00'), 'dd/MM/yyyy', { locale: es });
-      } catch (e) { console.warn(`Fecha inválida: ${registro.fecha}`); }
+           // Formatear fecha para mostrar
+           fechaFormateada = format(parseISO(registro.fecha + 'T00:00:00'), 'dd/MM/yyyy', { locale: es }); // Añadir Z para indicar UTC y evitar corrimientos
+      } catch (e) { console.warn(`Fecha inválida en registro ${registro.id}: ${registro.fecha}`); }
 
-      const deudaAnteriorColor = registro.deudaAnterior > 0 ? 'text-red-600' : registro.deudaAnterior < 0 ? 'text-green-600' : 'text-gray-700';
+      // Determinar color de deudas
+      const deudaAnteriorColor = registro.deudaAnterior > 0 ? '' : registro.deudaAnterior < 0 ? 'text-green-600' : 'text-gray-700';
+      const deudaFinalColor = registro.deudaFinal > 0 ? '' : registro.deudaFinal < 0 ? 'text-green-600' : '';
 
       return (
         <TableRow key={registro.id}>
-          <TableCell>{fechaFormateada}</TableCell>
+          <TableCell className="whitespace-nowrap">{fechaFormateada}</TableCell>
           <TableCell>{registro.chofer || '-'}</TableCell>
-          {/* ✨ Celda Vehiculo REMOVIDA ✨ */}
-          <TableCell className={`text-right ${deudaAnteriorColor}`}>${(registro.deudaAnterior || 0).toLocaleString('es-AR')}</TableCell>
-          <TableCell className="text-right">${(registro.montoPagar || 0).toLocaleString('es-AR')}</TableCell>
-          <TableCell className="text-right text-green-600">${(registro.totalPagado || 0).toLocaleString('es-AR')}</TableCell>
-          <TableCell className="text-right text-red-600">${(registro.gastos || 0).toLocaleString('es-AR')}</TableCell>
+          {/* Columna Tarifa */}
+          <TableCell className={`text-right ${deudaAnteriorColor}`}>
+              ${(registro.montoTarifa || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+          </TableCell>
+          {/* NUEVA CELDA: Deuda Anterior */}
+          <TableCell className="text-right">
+              ${(registro.deudaAnterior || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+          </TableCell>
+          {/* CELDA RENOMBRADA: Monto Total a Pagar */}
+          <TableCell className="text-right font-medium">
+              ${(registro.montoPagar || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+          </TableCell>
+          <TableCell className="text-right text-green-600">
+              ${(registro.totalPagado || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+          </TableCell>
+          <TableCell className="text-right text-red-600">
+              ${(registro.gastos || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+          </TableCell>
           <TableCell className="text-right">
             <Badge
               variant={ registro.deudaFinal > 0 ? 'destructive' : registro.deudaFinal < 0 ? 'default' : 'secondary' }
-              className={ registro.deudaFinal < 0 ? 'bg-green-100 text-green-800 hover:bg-green-100' : '' } >
-              ${(registro.deudaFinal || 0).toLocaleString('es-AR')}
+              className={ registro.deudaFinal < 0 ? `bg-green-100 text-green-800 ${deudaFinalColor}` : deudaFinalColor } >
+              ${(registro.deudaFinal || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
             </Badge>
           </TableCell>
         </TableRow>
@@ -167,67 +210,84 @@ export function HistorialPage() {
     <div className="max-w-7xl mx-auto p-4 md:p-6">
       <Card>
         <CardHeader>
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between space-y-2 md:space-y-0">
-            <div className="flex items-center space-x-2">
-              <History className="w-5 h-5 text-blue-600" />
-              <CardTitle className="text-xl">Historial de Rendiciones</CardTitle>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <Input
-                  placeholder="Buscar por Chofer..." // Placeholder actualizado
-                  className="pl-9 w-48 md:w-64 h-9 text-sm"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  disabled={loading || isRefreshing}
-                />
-              </div>
-              <Button
-                variant="outline" size="sm" className="h-9 border-blue-300 hover:bg-blue-50 text-blue-700"
-                onClick={handleExport} disabled={filteredHistorial.length === 0 || loading || isRefreshing}>
-                <Download className="w-4 h-4 mr-1" />
-                Exportar
-              </Button>
-               <Button variant="outline" size="icon" className={`h-9 w-9 p-0 relative ${isRefreshing ? 'cursor-not-allowed' : ''}`}
-                onClick={handleRefresh} disabled={isRefreshing || loading} title="Recargar historial">
-                {isRefreshing ? <Loader2 className="w-4 h-4 animate-spin absolute inset-0 m-auto text-blue-500" /> : <RefreshCw className="w-4 h-4" />}
-               </Button>
-            </div>
-          </div>
+           <div className="flex flex-col md:flex-row items-start md:items-center justify-between space-y-2 md:space-y-0">
+             <div className="flex items-center space-x-2"><History className="w-5 h-5 text-blue-600" /><CardTitle className="text-xl">Historial de Rendiciones</CardTitle></div>
+             <div className="flex items-center space-x-2">
+                 <Select
+                    value={selectedChofer} // El valor está atado al estado
+                    onValueChange={(value) => {
+                      // Si el usuario elige "todos", vuelve al estado inicial ''
+                      setSelectedChofer(value === "todos" ? "" : value);
+                    }}
+                    disabled={loading || isRefreshing || choferesUnicos.length === 0}
+                  >
+                    <SelectTrigger className="w-48 md:w-64 h-9 text-sm">
+                      <SelectValue placeholder="Filtrar por Chofer..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {/* Opción para mostrar "Todos" */}
+                      <SelectItem value="todos">Todos los Choferes</SelectItem>
+                      
+                      {/* Mapea la lista única que creaste en el paso 3 */}
+                      {choferesUnicos.map((chofer) => (
+                        <SelectItem key={chofer} value={chofer}>
+                          {chofer}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                 <Button // Export Button
+                    variant="outline" size="sm" className="h-9 border-blue-600 hover:bg-blue-50 text-blue-700 font-medium"
+                    onClick={handleExport} disabled={filteredHistorial.length === 0 || loading || isRefreshing}>
+                    <Download className="w-4 h-4 mr-1" /> Exportar
+                 </Button>
+                 <Button // Refresh Button
+                    variant="outline" size="icon" className={`h-9 w-9 p-0 relative ${isRefreshing ? 'cursor-not-allowed' : ''}`}
+                    onClick={handleRefresh} disabled={isRefreshing || loading} title="Recargar historial">
+                    {isRefreshing ? <Loader2 className="w-4 h-4 animate-spin absolute inset-0 m-auto text-blue-500" /> : <RefreshCw className="w-4 h-4" />}
+                 </Button>
+             </div>
+           </div>
         </CardHeader>
         <CardContent>
            {/* Error global */}
           {error && historial.length === 0 && (
-             <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-md text-sm">
-               <strong>Error:</strong> {error}
+             <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-md text-sm flex justify-between items-center">
+               <span><strong>Error:</strong> {error}</span>
+                <Button variant="ghost" size="sm" onClick={() => setError(null)}>Cerrar</Button>
              </div>
            )}
-          <div className="rounded-md border overflow-x-auto relative">
+          <div className="rounded-md border overflow-x-auto relative min-h-[200px]"> {/* Altura mínima para ver spinner */}
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[100px]">Fecha</TableHead>
                   <TableHead>Chofer</TableHead>
-                  {/* ✨ Encabezado Vehiculo REMOVIDO ✨ */}
-                  <TableHead className="text-right">Deuda Ant.</TableHead>
-                  <TableHead className="text-right">Monto Pagar</TableHead>
+                  {/* Columna Vehículo comentada/eliminada */}
+                  <TableHead className="text-right">Tarifa Calculada</TableHead>
+                  {/* NUEVO ENCABEZADO: Monto Tarifa */}
+                  <TableHead className="text-right">Saldo Anterior</TableHead>
+                  {/* ENCABEZADO RENOMBRADO: Monto Total Pagar */}
+                  <TableHead className="text-right">Monto Total Pagar</TableHead>
                   <TableHead className="text-right">Total Pagado</TableHead>
                   <TableHead className="text-right">Gastos</TableHead>
                   <TableHead className="text-right">Deuda Final</TableHead>
                 </TableRow>
               </TableHeader>
-              <TableBody>{tableContent}</TableBody>
+              <TableBody>
+                  {/* Muestra contenido o mensajes de estado */}
+                  {tableContent}
+              </TableBody>
             </Table>
-             {/* Indicador recarga sutil */}
-             {isRefreshing && historial.length > 0 && ( <div className="absolute bottom-2 right-2 p-1 bg-white rounded-full shadow"><Loader2 className="w-4 h-4 animate-spin text-blue-500" /></div> )}
+             {/* Indicador de recarga sutil */}
+             {isRefreshing && historial.length > 0 && ( <div className="absolute bottom-2 right-2 p-1 bg-white rounded-full shadow-md border"><Loader2 className="w-4 h-4 animate-spin text-blue-500" /></div> )}
           </div>
             {/* Mensaje cantidad registros */}
             {!loading && !error && (
                  <div className="mt-4 text-xs text-gray-500 text-center">
-                   {searchTerm
-                     ? `Mostrando ${filteredHistorial.length} de ${historial.length} registros.`
-                     : `Mostrando ${historial.length} registros.`
+                   {selectedChofer
+                     ? `Mostrando ${filteredHistorial.length} de ${historial.length} registros que coinciden.`
+                     : `Mostrando ${historial.length} registros en total.`
                    }
                  </div>
             )}
@@ -236,4 +296,3 @@ export function HistorialPage() {
     </div>
   );
 }
-

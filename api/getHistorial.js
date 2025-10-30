@@ -86,8 +86,8 @@ module.exports = async (req, res) => {
         console.log("Leyendo datos de Sheets...");
         // AJUSTA los rangos si tus hojas o columnas son diferentes
         const ranges = [
-            'Rendiciones!A:I', // ID, Fecha, ID Chofer, ID Vehiculo, Tarifa, Efec, Transf, MP, DeudaAnt
-            'Gastos!A:E',      // ID Gasto, Fecha, ID Rendicion, Concepto, Monto
+            'Rendiciones!A:L', // ID, Fecha, ID Chofer, ID Vehiculo, Tarifa, Efec, Transf, MP, DeudaAnt
+            'Rendiciones!A:L',      // ID Gasto, Fecha, ID Rendicion, Concepto, Monto
             'Choferes!A:B',   // ID Chofer, Nombre
             'Vehiculos!A:C'       // ID Vehiculo, Nombre Visible, Patente
         ];
@@ -139,19 +139,6 @@ module.exports = async (req, res) => {
         });
 
 
-        // Crear mapa de gastos por ID de rendición
-        const mapaGastosPorRendicion = {}; // id_rendicion -> suma_gastos
-        gastoRows.slice(1).forEach(row => {
-            // Asume ID Rendición en Col C (índice 2), Monto en Col E (índice 4)
-            if (row && row[2]) {
-                const rendicionId = row[2];
-                const montoGasto = parseMonto(row[4]); // Usar parseMonto
-                mapaGastosPorRendicion[rendicionId] = (mapaGastosPorRendicion[rendicionId] || 0) + montoGasto;
-            }
-        });
-
-        console.log("Mapas creados. Procesando rendiciones para historial...");
-
         // Procesar cada rendición para crear un registro de historial
         const historial = rendRows.slice(1).map((row, index) => {
              // Validar fila básica
@@ -174,39 +161,33 @@ module.exports = async (req, res) => {
             const vehiculoNombre = mapaVehiculos[vehiculoId] || `ID ${vehiculoId}`;
 
             // Calcular montos usando parseMonto
-            const tarifa = parseMonto(row[4]);        // Col E: Tarifa
-            const efectivo = parseMonto(row[5]);      // Col F: Efectivo
-            const transferencia = parseMonto(row[6]); // Col G: Transferencia
-            const mercadoPago = parseMonto(row[7]);   // Col H: MP (si existe)
+            const tarifa = parseMonto(row[3]);        // Col D: Tarifa
+            const efectivo = parseMonto(row[6]);      // Col G: Efectivo
+            const transferencia = parseMonto(row[7]); // Col H: Transferencia
             // ✨ LEER DEUDA ANTERIOR (Asumimos Col I, índice 8) ✨
-            const deudaAnterior = parseMonto(row[8]); // Col I
+            const deudaAnterior = parseMonto(row[4]); // Col I
+            const gastos = parseMonto(row[8]); // Col I
+            const montoPagar = parseMonto(row[5]); //Col F
+            const deudaFinal = parseMonto(row[9]); //Col J
 
-            const totalPagado = efectivo + transferencia + mercadoPago;
-            const gastos = mapaGastosPorRendicion[rendicionId] || 0;
+            const totalPagado = efectivo + transferencia ;
 
-            // Lógica de cálculo (¡REVISA ESTA FÓRMULA!)
-            // Asume Monto a Pagar = Tarifa
-            const montoPagar = tarifa;
-            // DeudaFinal = (Deuda Anterior + Monto a Pagar) - Total Pagado - Gastos
-            const deudaFinal = (deudaAnterior + montoPagar) - totalPagado;
 
-            // Log detallado por fila para depurar cálculo
-            // console.log(`Fila ${index + 2}: ID=${rendicionId}, DA=${deudaAnterior}, MP=${montoPagar}, TP=${totalPagado}, G=${gastos} -> DF=${deudaFinal}`);
+
 
             return {
                 id: rendicionId,
                 fecha: fechaISO,
                 chofer: choferNombre,
                 vehiculo: vehiculoNombre,
+                montoTarifa: tarifa,
+                deudaAnterior: deudaAnterior, // ✨ Incluir en el objeto devuelto
                 montoPagar: montoPagar,
                 totalPagado: totalPagado,
                 gastos: gastos,
-                deudaAnterior: deudaAnterior, // ✨ Incluir en el objeto devuelto
                 deudaFinal: deudaFinal,
             };
         }).filter(Boolean); // Filtrar filas nulas
-
-        console.log(`Historial procesado: ${historial.length} registros válidos.`);
 
         // Opcional: Ordenar el historial por fecha descendente antes de enviarlo
         historial.sort((a, b) => b.fecha.localeCompare(a.fecha));

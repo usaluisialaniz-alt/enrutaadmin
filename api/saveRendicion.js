@@ -30,11 +30,16 @@ module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Método no permitido' });
 
   try {
+    console.log('--- PASO 1: req.body COMPLETO RECIBIDO ---');
+    console.log(JSON.stringify(req.body, null, 2));
+    console.log('-------------------------------------------');
     // --- ¡NUEVO! Importación dinámica de uuid ---
     const { v4: uuidv4 } = await import('uuid');
 
     // 1. Obtener Datos del Body (Ahora 'pagos' contiene los días)
-    const { choferId, vehiculoId, pagos, gastos } = req.body;
+    const { choferId, vehiculoId, montoAPagar, pagos, gastos } = req.body;
+    console.log(`--- PASO 2: Valor de 'montoAPagar' LEÍDO del body: [${montoAPagar}] (Tipo: ${typeof montoAPagar}) ---`);
+
 
     if (!choferId || !vehiculoId || !Array.isArray(pagos)) {
       return res.status(400).json({ error: 'Faltan datos requeridos (choferId, vehiculoId, pagos).' });
@@ -52,10 +57,8 @@ module.exports = async (req, res) => {
     const spreadsheetId = process.env.GOOGLE_SHEET_ID;
     if (!spreadsheetId) return res.status(500).json({ error: 'Configuración: Falta Sheet ID.' });
 
-    // 3. --- ¡NUEVO! Calcular Monto a Pagar y Totales ---
-    const { tarifaNormal, tarifaEspecial } = await getTarifasVehiculo(sheets, spreadsheetId, vehiculoId);
 
-    let montoTotalAPagarCalculado = 0;
+    let montoTotalAPagarCalculado = parseFloat(montoAPagar) || 0;
     let totalPagadoEfectivo = 0;
     let totalPagadoTransferencia = 0;
     const pagosValidos = pagos || []; // Asegura que sea un array
@@ -63,7 +66,6 @@ module.exports = async (req, res) => {
     pagosValidos.forEach(p => {
         const dn = Number(p.diasNormalesPagados) || 0;
         const de = Number(p.diasEspecialesPagados) || 0;
-        montoTotalAPagarCalculado += (dn * tarifaNormal) + (de * tarifaEspecial);
 
         const montoEntregado = parseFloat(p.monto) || 0;
         if (p.metodo?.toLowerCase() === 'efectivo') {
@@ -91,28 +93,37 @@ module.exports = async (req, res) => {
         }
     }
     if (rowIndexChofer === -1) return res.status(404).json({ error: `Chofer ${choferId} no encontrado.` });
-
+    const totalpagar = montoTotalAPagarCalculado-totalGastos+deudaAnterior
     // 5. Calcular Nuevo Saldo
-    const nuevoSaldoDeudor = (deudaAnterior + montoTotalAPagarCalculado) - totalPagado - totalGastos;
+    const nuevoSaldoDeudor = (totalpagar) - totalPagado ;
 
     // 6. Preparar datos para escribir (Usamos los totales calculados)
     const idRendicion = `REN-${uuidv4().substring(0, 6).toUpperCase()}`;
     const fechaActual = new Date();
+    const fechaLocal = new Date(fechaActual.getTime() - (fechaActual.getTimezoneOffset() * 60000));
+    const fechaLocalISO = fechaLocal.toISOString().slice(0, -1); // "2025-10-30T12:04:00.123"
+
     // ID_Rendicion, Fecha, ID_Chofer, Monto_a_Pagar(CALCULADO), Deuda_Anterior, Pago_Efectivo, Pago_Transferencia, Gastos_del_Dia, Saldo_Final
     const rendicionRow = [
-        idRendicion, fechaActual.toISOString(), choferId,
-        montoTotalAPagarCalculado, deudaAnterior, // Usamos el calculado
-        totalPagadoEfectivo, totalPagadoTransferencia, // Usamos los totales
-        totalGastos, nuevoSaldoDeudor
+        idRendicion, fechaLocalISO, choferId,
+        montoTotalAPagarCalculado, 
+        deudaAnterior, // Usamos el calculado
+        totalpagar,
+        totalPagadoEfectivo, 
+        totalPagadoTransferencia, // Usamos los totales
+        totalGastos, 
+        nuevoSaldoDeudor
     ];
     const gastosRows = gastosArray.map(g => { /* ... sin cambios ... */
         const idGasto = `GAS-${uuidv4().substring(0, 6).toUpperCase()}`;
-        return [idGasto, idRendicion, g.concepto, parseFloat(g.monto) || 0];
+        return [idGasto, fechaLocalISO, idRendicion, g.concepto, parseFloat(g.monto) || 0];
     });
+    console.log('PASO 2: FILA PREPARADA PARA GOOGLE SHEETS (rendicionRow):');
+    console.log(rendicionRow);
 
     // 7. Escribir en Google Sheets (Sin Cambios Lógicos)
     const requests = [];
-    requests.push(sheets.spreadsheets.values.append({ spreadsheetId, range: 'Rendiciones!A:I', valueInputOption: 'USER_ENTERED', requestBody: { values: [rendicionRow] } }));
+    requests.push(sheets.spreadsheets.values.append({ spreadsheetId, range: 'Rendiciones!A:L', valueInputOption: 'USER_ENTERED', requestBody: { values: [rendicionRow] } }));
     if (gastosRows.length > 0) requests.push(sheets.spreadsheets.values.append({ spreadsheetId, range: 'Gastos!A:D', valueInputOption: 'USER_ENTERED', requestBody: { values: gastosRows } }));
     requests.push(sheets.spreadsheets.values.update({ spreadsheetId, range: `Choferes!E${rowIndexChofer}`, valueInputOption: 'USER_ENTERED', requestBody: { values: [[nuevoSaldoDeudor]] } }));
     await Promise.all(requests);
