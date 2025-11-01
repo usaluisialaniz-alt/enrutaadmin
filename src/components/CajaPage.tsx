@@ -1,4 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Wallet, DollarSign, TrendingUp, Calendar as CalendarIcon, Loader2, RefreshCw } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -42,6 +49,18 @@ export function CajaPage() {
   const [error, setError] = useState<string | null>(null);
   const [fechaSeleccionada, setFechaSeleccionada] = useState<Date | undefined>(startOfDay(new Date())); // Normaliza a UTC al inicio
   const [popoverOpen, setPopoverOpen] = useState(false); // Controla si el Popover está abierto
+  const [selectedChofer, setSelectedChofer] = useState(''); // '' = Todos
+
+  const choferesUnicos = useMemo(() => {
+  // 1. Obtiene las transacciones del estado, o un array vacío si no hay
+  const transacciones = dataCaja?.transacciones || [];
+  // 2. Mapea para obtener solo los nombres
+  const nombres = transacciones.map(r => r.chofer);
+  // 3. Usa 'Set' para obtener solo los únicos
+  const unicos = [...new Set(nombres)];
+  // 4. Ordena alfabéticamente
+  return unicos.sort((a, b) => a.localeCompare(b));
+  }, [dataCaja]); // ¡La dependencia es 'dataCaja'!
 
   // --- Función para Cargar Datos ---
   const fetchCajaDia = async (fecha?: Date) => {
@@ -117,6 +136,12 @@ export function CajaPage() {
     ? format(fechaSeleccionada, "EEEE, d 'de' MMMM 'de' yyyy", { locale: es })
     : 'Seleccione fecha';
 
+  // --- Lógica de Filtrado Chofer---
+  const transaccionesFiltradas = transacciones.filter((registro) => {
+    if (!selectedChofer) return true; // Si no hay filtro ('' = Todos), muestra todo
+    return registro.chofer === selectedChofer;
+  });
+
   // --- JSX ---
   return (
     <div className="max-w-7xl mx-auto space-y-4 p-4 md:p-6">
@@ -160,6 +185,23 @@ export function CajaPage() {
                     />
                 </PopoverContent>
             </Popover>
+            <Select
+              value={selectedChofer}
+              onValueChange={(value) => setSelectedChofer(value === "todos" ? "" : value)}
+              disabled={loading || choferesUnicos.length === 0}
+            >
+              <SelectTrigger className="w-[180px] h-9 text-sm">
+                <SelectValue placeholder="Filtrar Chofer..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos los Choferes</SelectItem>
+                {choferesUnicos.map((chofer) => (
+                  <SelectItem key={chofer} value={chofer}>
+                    {chofer}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             {/* --- FIN DATE PICKER --- */}
             <Button variant="outline" size="icon" onClick={handleRefresh} disabled={loading} title="Recargar">
                 <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />

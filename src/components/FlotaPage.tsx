@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import ActionModal from '../components/ui/ActionModal';
 import VehiculoForm, { VehiculoFormData, VehiculoFormHandle } from '../components/forms/VehiculoForm';
 
+
 interface Vehiculo {
 id_vehiculo: string;
 nombre_visible: string;
@@ -15,6 +16,15 @@ chofer: string | null;
 tarifa_normal: string | number;
 tarifa_especial: string | number;
 estado: string;
+chofer_id:string;
+}
+interface Chofer {
+  id_chofer: string;
+  nombre_completo: string;
+  telefono?: string;
+  vehiculo_asignado_id?: string;
+  deuda_actual: string | number;
+  estado: string;
 }
 
 interface ModalState {
@@ -31,31 +41,46 @@ const [isRefreshing, setIsRefreshing] = useState(false);
 const [isSubmitting, setIsSubmitting] = useState(false);
 const [modalState, setModalState] = useState<ModalState>({ isOpen: false, type: 'add', vehiculo: null });
 const formRef = useRef<VehiculoFormHandle>(null);
+const [listaChoferes, setListaChoferes] = useState<Chofer[]>([]);
 
 const fetchVehiculos = async () => {
 setError(null);
 try {
-const response = await fetch('/api/getVehiculos');
-if (!response.ok) throw new Error(`Error HTTP: ${response.status}`);
-const data = await response.json();
-setVehiculos(Array.isArray(data.vehiculos) ? data.vehiculos : []);
+    const response = await fetch('/api/getVehiculos');
+    if (!response.ok) throw new Error(`Error HTTP: ${response.status}`);
+    const data = await response.json();
+    setVehiculos(Array.isArray(data.vehiculos) ? data.vehiculos : []);
 } catch (e) {
-setError(e instanceof Error ? e.message : String(e));
+    setError(e instanceof Error ? e.message : String(e));
 } finally {
-setLoading(false);
-setIsRefreshing(false);
+    setLoading(false);
+    setIsRefreshing(false);
 }
 };
-
+const fetchChoferes = async () => {
+  try {
+    console.log("Fetching choferes...")
+    const response = await fetch('/api/getChoferes'); 
+    if (!response.ok) throw new Error(`Error HTTP: ${response.status}`);
+    const data = await response.json();
+    setListaChoferes(Array.isArray(data.choferes) ? data.choferes : []);
+    console.log('LOG 1 - Datos de choferes recibidos:', data);
+  } catch (e) {
+    // Opcional: manejar el error de carga de choferes
+    console.error("Error al cargar choferes:", e);
+  }
+};
 useEffect(() => {
 setLoading(true);
 fetchVehiculos();
+fetchChoferes();
 }, []);
 
 const handleRefresh = () => {
 if (!isRefreshing) {
 setIsRefreshing(true);
 fetchVehiculos();
+fetchChoferes();
 }
 };
 
@@ -76,6 +101,7 @@ const dataToSend = {
   tarifa_normal: Number(formData.tarifa_normal) || 0,
   tarifa_especial: Number(formData.tarifa_especial) || 0,
   estado: formData.estado,
+  choferId: formData.choferId || null
 };
 
 try {
@@ -139,7 +165,7 @@ loading && vehiculos.length === 0 ? ( <TableRow> <TableCell colSpan={7} classNam
 ) : vehiculos.length === 0 ? ( <TableRow> <TableCell colSpan={7} className="text-center py-8 text-gray-500">
 No hay vehículos. </TableCell> </TableRow>
 ) : (
-vehiculos.map((v) => ( <TableRow key={v.id_vehiculo}> <TableCell>{v.nombre_visible}</TableCell> <TableCell>{v.patente}</TableCell> <TableCell>{v.chofer || 'Sin Asignar'}</TableCell> <TableCell className="text-right">${v.tarifa_normal}</TableCell> <TableCell className="text-right">${v.tarifa_especial}</TableCell> <TableCell>
+vehiculos.map((v) => ( <TableRow key={v.id_vehiculo}> <TableCell>{v.nombre_visible}</TableCell> <TableCell>{v.patente}</TableCell> <TableCell>{v.chofer}</TableCell> <TableCell className="text-right">${v.tarifa_normal}</TableCell> <TableCell className="text-right">${v.tarifa_especial}</TableCell> <TableCell>
 <Badge
 className={
 v.estado === 'activo'
@@ -203,17 +229,20 @@ return ( <div className="max-w-7xl mx-auto p-4 md:p-6"> <Card> <CardHeader> <div
       <VehiculoForm
         ref={formRef}
         onSubmit={handleFormSubmit}
+        choferes={listaChoferes}
+        
         defaultValues={
           modalState.vehiculo
             ? {
                 id_vehiculo: modalState.vehiculo.id_vehiculo,
-                nombre_visible: modalState.vehiculo.nombre_visible,
+                nombre_visible:  modalState.vehiculo.nombre_visible,
                 patente: modalState.vehiculo.patente,
                 tarifa_normal: Number(modalState.vehiculo.tarifa_normal),
                 tarifa_especial: Number(modalState.vehiculo.tarifa_especial),
                 estado: modalState.vehiculo.estado as 'activo' | 'mantenimiento' | 'inactivo',
+                choferId: modalState.vehiculo.chofer_id || null,
               }
-            : { nombre_visible: '', patente: '', tarifa_normal: 0, tarifa_especial: 0, estado: 'activo' }
+            : { nombre_visible: '', patente: '', tarifa_normal: 0, tarifa_especial: 0, estado: 'activo' , choferId: null }
         }
         isLoading={isSubmitting}
       />

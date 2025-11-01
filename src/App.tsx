@@ -31,7 +31,9 @@ export default function App() {
         } bg-slate-800 text-white transition-all duration-300 overflow-hidden`}
       >
         <div className="p-6">
-          <h1 className="text-white mb-8">Sistema de Alquiler</h1>
+          <h1 className="text-white mb-8">Sistema de Admin
+            En Ruta
+          </h1>
           <nav className="space-y-2">
             {modules.map((module) => {
               const Icon = module.icon;

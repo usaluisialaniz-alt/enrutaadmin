@@ -135,7 +135,7 @@
 }
 
 .calendar-day-today {
-  background-color: #fff3cd; /* Amarillo claro para hoy */
+  background-color: #e4b20f; /* Amarillo claro para hoy */
   color: #856404; /* Texto marrón */
   font-weight: 500;
   border: 1px solid #ffeaa7; /* Borde sutil */
@@ -153,5 +153,48 @@
 
 .calendar-day-disabled:hover {
   background: none; /* Sin hover en deshabilitados */
+  transform: none;
+}
+
+/* --- ¡NUEVOS ESTILOS PARA ESTADOS DE PAGO! --- */
+
+/* Req 1: Días pasados (Rojo) */
+.calendar-day-pasado {
+  color: #e53e3e; /* un rojo suave (similar a text-red-600) */
+  font-style: italic;
+}
+.calendar-day-pasado:hover {
+  background-color: #fed7d7; /* fondo rojo claro en hover */
+}
+
+/* Req 2: Días especiales (Feriados/Finde) */
+.calendar-day-especial {
+  color: #805ad5; /* Morado (similar a text-purple-600) */
+  font-weight: 600;
+}
+
+/* Req 4: Días pagados (Verde) */
+.calendar-day-paid {
+  background-color: #c6f6d5; /* Fondo verde claro (bg-green-100) */
+  color: #22543d; /* Texto verde oscuro (text-green-700) */
+  text-decoration: line-through;
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+.calendar-day-paid:hover {
+  background-color: #c6f6d5;
+  transform: none;
+}
+
+/* Req 4: Días con pago parcial (Amarillo) */
+.calendar-day-partial {
+  background-color: #fefcbf; /* Fondo amarillo claro (bg-yellow-100) */
+  color: #713f12; /* Texto marrón oscuro (text-yellow-700) */
+  text-decoration: line-through;
+  opacity: 0.8;
+  cursor: not-allowed;
+}
+.calendar-day-partial:hover {
+  background-color: #fefcbf;
   transform: none;
 }

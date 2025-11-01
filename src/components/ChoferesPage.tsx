@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import ActionModal from '@/components/ui/ActionModal'; // Corregido: Importar desde ui
-import ChoferForm, { ChoferFormData, ChoferFormHandle } from '@/components/ChoferForm'; // Corregido: Importar desde components
+import ChoferForm, { ChoferFormData, ChoferFormHandle } from '@/components/forms/ChoferForm'; // Corregido: Importar desde components
 
 // Definimos un tipo para los datos que esperamos de la API
 interface Chofer {

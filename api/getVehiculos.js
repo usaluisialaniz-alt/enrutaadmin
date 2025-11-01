@@ -35,7 +35,7 @@ module.exports = async (req, res) => {
         // ¡AJUSTA ESTOS VALORES SI TU HOJA ES DIFERENTE!
         const sheetName = 'Vehiculos';
         // Asegúrate que el rango cubra TODAS las columnas necesarias (A hasta G en este caso)
-        const range = `${sheetName}!A:G`;
+        const range = `${sheetName}!A:H`;
         const idColIndex = 0;       // Columna A
         const nombreColIndex = 1;   // Columna B
         const patenteColIndex = 2;  // Columna C
@@ -43,8 +43,7 @@ module.exports = async (req, res) => {
         const tnColIndex = 4;       // Columna E (Tarifa Normal)
         const teColIndex = 5;       // Columna F (Tarifa Especial)
         const estadoColIndex = 6;   // Columna G (Estado) ✨
-
-        console.log(`Leyendo datos de: ${range}`);
+        const choferIdColIndex = 7; //Columna H
 
         const response = await sheets.spreadsheets.values.get({
             spreadsheetId,
@@ -73,6 +72,7 @@ module.exports = async (req, res) => {
             // Leer tarifas, default a 0
             const tarifa_normal = row[tnColIndex] || 0;
             const tarifa_especial = row[teColIndex] || 0;
+            const chofer_id = row[choferIdColIndex];
             // Leer estado (índice 6), limpiar y default a 'inactivo'
             const estadoRaw = row[estadoColIndex];
             let estado = 'inactivo'; // Default state
@@ -98,7 +98,8 @@ module.exports = async (req, res) => {
                 chofer,             // ✨ Usar el valor leído de la columna D
                 tarifa_normal,
                 tarifa_especial,
-                estado,             // ✨ Usar el valor limpio de la columna G
+                estado,
+                chofer_id             // ✨ Usar el valor limpio de la columna G
             };
         }).filter(vehiculo => vehiculo !== null); // Filtrar filas nulas (saltadas)
 
