@@ -25,13 +25,14 @@ module.exports = async (req, res) => {
     const sheets = google.sheets({ version: 'v4', auth: clientAuth });
     const spreadsheetId = process.env.GOOGLE_SHEET_ID;
 
-    // Asume:
-    // Hoja 'DiasPagados'
-    // Columna C (índice 2) = fecha_pagada (YYYY-MM-DD)
-    // Columna D (índice 3) = choferId
-    // Columna G (índice 6) = status ('paid' o 'partial')
-    // Leemos el rango C:G
-    const range = 'DiasPagados!C:G'; 
+    // Asume: Hoja 'DiasPagados'
+    // Col C = fecha_pagada (YYYY-MM-DD)
+    // Col D = choferId
+    // Col F = tarifaAplicada
+    // Col G = totalPagado (en esa transacción)
+    // Col H = status ('paid' o 'partial')
+    // ¡Leemos el rango completo C:H!
+    const range = 'DiasPagados!C:H'; 
 
     console.log(`[getPaidDates] Buscando historial para choferId: ${choferId}`);
     
@@ -39,24 +40,33 @@ module.exports = async (req, res) => {
     const rows = response.data.values || [];
     
     // 2. Crear el "mapa" de historial (como espera el frontend)
-    // Ej: { '2025-10-10': 'paid', '2025-10-11': 'partial' }
+    // Ej: { '2025-10-10': { status: 'paid' }, '2025-10-11': { status: 'partial', tarifa: 5000, pagado: 2000 } }
     const paidDatesMap = {};
     
     if (rows.length > 0) {
-        // Itera y filtra las fechas que coinciden con el choferId
-        // Asume que la Fila 1 (índice 0) NO es encabezado, o filtra si lo es.
-        // Empezamos en 0 (si no hay encabezado) o 1 (si sí lo hay)
         for (let i = 0; i < rows.length; i++) { 
             const row = rows[i];
-            
-            // Índices basados en el rango C:G
-            const fecha = row[0]; // Col C (índice 0 en el array 'row')
-            const id = row[1];    // Col D (índice 1 en el array 'row')
-            const status = row[4]; // Col G (índice 4 en el array 'row')
+            // El rango C:H tiene 6 columnas (C,D,E,F,G,H). Índices 0 a 5.
+            const fecha = row[0]; // Col C
+            const id = row[1];    // Col D
+            const tarifa = parseFloat(row[3]) || 0; // Col F
+            const pagado = parseFloat(row[4]) || 0; // Col G
+            const status = row[5]; // Col H
             
             // Comparamos el ID de la Col D con el choferId
             if (id && fecha && String(id).trim() === String(choferId).trim()) {
-                paidDatesMap[fecha] = status || 'paid'; // Guarda el status ('paid' o 'partial')
+                
+                // Si el día es 'partial', guardamos todos los detalles
+                if (status === 'partial') {
+                    paidDatesMap[fecha] = {
+                        status: 'partial',
+                        tarifa: tarifa,
+                        pagado: pagado
+                    };
+                } else {
+                    // Si es 'paid', solo necesitamos saber el estado
+                    paidDatesMap[fecha] = { status: 'paid' };
+                }
             }
         }
     }

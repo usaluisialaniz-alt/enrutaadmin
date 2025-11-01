@@ -192,7 +192,7 @@
   color: #713f12; /* Texto marrón oscuro (text-yellow-700) */
   text-decoration: line-through;
   opacity: 0.8;
-  cursor: not-allowed;
+  cursor: pointer;
 }
 .calendar-day-partial:hover {
   background-color: #fefcbf;

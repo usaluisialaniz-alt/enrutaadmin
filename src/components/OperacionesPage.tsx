@@ -57,6 +57,13 @@ const fetchFeriados = async (): Promise<string[]> => {
 
 // --- ¡NUEVO TIPO! Estado del día pagado ---
 type PaidDateStatus = 'paid' | 'partial';
+// --- ¡NUEVO TIPO! Historial de Pagos Detallado ---
+interface PaidDateInfo {
+    status: PaidDateStatus;
+    tarifa?: number;
+    pagado?: number;
+}
+
 
 export function OperacionesPage() {
   // --- Estados API ---
@@ -66,9 +73,10 @@ export function OperacionesPage() {
   const [loadingChoferes, setLoadingChoferes] = useState(true);
   const [loadingVehiculos, setLoadingVehiculos] = useState(true);
   
-  // --- ¡ESTADO DE HISTORIAL MODIFICADO! ---
-  // Guarda un mapa de fechas a su estado: { '2025-10-10': 'paid', '2025-10-11': 'partial' }
-  const [paidDatesHistory, setPaidDatesHistory] = useState<Record<string, PaidDateStatus>>({}); 
+  // --- ¡¡CAMBIO CRÍTICO!! ---
+  // El estado debe usar la interfaz 'PaidDateInfo' (el objeto),
+  // no el tipo 'PaidDateStatus' (el string).
+  const [paidDatesHistory, setPaidDatesHistory] = useState<Record<string, PaidDateInfo>>({}); 
   const [loadingHistory, setLoadingHistory] = useState(false);
 
   // --- Estados Formulario (MODIFICADOS) ---
@@ -152,14 +160,14 @@ export function OperacionesPage() {
             const data = await response.json();
             // ¡MODIFICADO! Espera un objeto, no un array
             if (typeof data.paidDates === 'object' && data.paidDates !== null) {
-                setPaidDatesHistory(data.paidDates); // Guarda { '2025-10-10': 'paid', '2025-10-11': 'partial' }
+                setPaidDatesHistory(data.paidDates); // Guarda { '2025-10-10': { status: 'paid' }, ... }
             } else {
-                // Simulación de fallback por si la API aún devuelve array
-                // En un caso real, la API /getPaidDates debe ser actualizada
-                if (Array.isArray(data.paidDates)) { 
-                    const historyMap: Record<string, PaidDateStatus> = {};
+                 // --- ¡CAMBIO EN FALLBACK! ---
+                 // El fallback (si la API es antigua) debe crear el objeto PaidDateInfo
+                 if (Array.isArray(data.paidDates)) { 
+                    const historyMap: Record<string, PaidDateInfo> = {}; // <-- Usar PaidDateInfo
                     data.paidDates.forEach((dateStr: string) => {
-                        historyMap[dateStr] = 'paid'; // Asume 'paid' si la API es antigua
+                        historyMap[dateStr] = { status: 'paid' }; // <-- Crear el objeto
                     });
                     setPaidDatesHistory(historyMap);
                 }
@@ -205,18 +213,36 @@ export function OperacionesPage() {
     return { tipo: 'normal', monto: tarifaN };
   };
 
-  // --- Cálculo Monto Jornada (Lógica REESCRITA) ---
-  // ¡ESTA LÓGICA NO CAMBIA!
-  // Al re-seleccionar un día 'partial', simplemente volvemos a sumar
-  // su tarifa completa. El usuario debe pagar el total de los días seleccionados.
+  // --- ¡¡LÓGICA DE CÁLCULO DE JORNADA REESCRITA!! (Tu Paso 3) ---
   const montoCalculadoJornada = useMemo(() => {
     if (!vehiculoActivo || !selectedDates || selectedDates.length === 0) return 0;
     
-    // Itera sobre cada fecha seleccionada, obtiene su tarifa y la suma
+    // Itera sobre cada fecha seleccionada, obtiene su tarifa requerida y la suma
     return selectedDates.reduce((total, date) => {
-        return total + getTarifaParaDia(date).monto;
-    }, 0);
-  }, [selectedDates, vehiculoActivo, feriados]); 
+        const isoDate = date.toISOString().split('T')[0];
+        
+        // 1. Busca el día en el historial que cargó la API
+        // 'history' es ahora (correctamente) tipo 'PaidDateInfo | undefined'
+        const history = paidDatesHistory[isoDate]; // Ej: { status: 'partial', tarifa: 10000, pagado: 4000 }
+
+        // 2. Comprueba si el día está en el historial Y su estado es 'partial'
+        if (history?.status === 'partial') { // <-- ¡ESTO AHORA FUNCIONA!
+            
+            // 3. (Tu lógica) Si es parcial, calcula el saldo restante
+            const tarifa = history.tarifa || 0;
+            const pagado = history.pagado || 0;
+            const saldoRestante = tarifa - pagado;
+            
+            // Sumamos solo el saldo restante (asegurándonos de que no sea negativo)
+            return total + (saldoRestante > 0 ? saldoRestante : 0);
+        } else {
+            // 4. Si es un día nuevo, suma la tarifa completa
+            return total + getTarifaParaDia(date).monto;
+        }
+    }, 0); // 0 es el 'total' inicial
+
+  // ¡Importante! Añade 'paidDatesHistory' a la lista de dependencias
+  }, [selectedDates, vehiculoActivo, feriados, paidDatesHistory]); 
 
   // --- Cálculos para Resumen (Actualizado) ---
   const totalPagadoEfectivamente = pagos.reduce((sum, p) => sum + (parseFloat(p.monto) || 0), 0);
@@ -233,6 +259,7 @@ export function OperacionesPage() {
     if (totalPagadoEfectivamente === 0) {
         return { texto: 'Pendiente de Pago', color: 'bg-red-100 text-red-700', icon: <BadgeAlert className="w-3 h-3" /> };
     }
+    // ¡CAMBIO! Si el pago es menor al monto *requerido* (que puede ser un saldo)
     if (totalPagadoEfectivamente < montoCalculadoJornada) {
         return { texto: 'Pago Parcial', color: 'bg-yellow-100 text-yellow-700', icon: <BadgeAlert className="w-3 h-3" /> };
     }
@@ -282,12 +309,13 @@ export function OperacionesPage() {
     setIsSubmitting(true);
 
     // --- ¡NUEVO! Determinar el estado de este pago ---
+    // (Tu Paso 4)
+    // ¡CAMBIO! Si el pago es menor, Y el monto de la jornada es mayor a 0, es parcial.
     const paymentStatus: PaidDateStatus = (montoCalculadoJornada > 0 && totalPagadoEfectivamente < montoCalculadoJornada) ? 'partial' : 'paid';
 
     const datosParaApi = {
         choferId: choferId,
         vehiculoId: vehiculoActivo.id_vehiculo,
-        // ¡NUEVO! Enviamos las fechas seleccionadas
         diasRendidos: selectedDates?.map(date => date.toISOString().split('T')[0]) || [],
         pagos: pagos
                 .filter(p => p.monto && parseFloat(p.monto) > 0)
@@ -317,11 +345,17 @@ export function OperacionesPage() {
 
         // --- ¡LÓGICA DE ACTUALIZACIÓN DE HISTORIAL MODIFICADA! ---
         // Actualiza el historial local inmediatamente con el estado correcto (verde o amarillo)
-        const newPaidDates: Record<string, PaidDateStatus> = { ...paidDatesHistory };
-        for (const dateStr of datosParaApi.diasRendidos) {
-            newPaidDates[dateStr] = datosParaApi.status;
-        }
-        setPaidDatesHistory(newPaidDates);
+        // Usamos una función para recargar el historial, es más seguro
+        const reloadHistory = async () => {
+             try {
+                const response = await fetch(`/api/getPaidDates?choferId=${choferId}`);
+                const data = await response.json();
+                if (typeof data.paidDates === 'object' && data.paidDates !== null) {
+                    setPaidDatesHistory(data.paidDates);
+                }
+             } catch (e) { console.error("Error recargando historial", e); }
+        };
+        reloadHistory(); // Recarga el historial desde la BD
 
         setTimeout(() => {
           // No reseteamos el choferId
@@ -347,20 +381,20 @@ export function OperacionesPage() {
     // Req 4 (Verde): Días pagados completamente
     paid: (date: Date) => {
         const isoDate = date.toISOString().split('T')[0];
-        return paidDatesHistory[isoDate] === 'paid';
+        return paidDatesHistory[isoDate]?.status === 'paid';
     },
     
     // Req 4 (Amarillo): Días con pago parcial
     partial: (date: Date) => {
         const isoDate = date.toISOString().split('T')[0];
-        return paidDatesHistory[isoDate] === 'partial';
+        return paidDatesHistory[isoDate]?.status === 'partial';
     },
     
     // Req 1 (Rojo): Días pasados, no seleccionados, y no pagados (ni total ni parcial)
     pasado: (date: Date) => {
         const isoDate = date.toISOString().split('T')[0];
         const isSelected = selectedDates?.find(d => d.toISOString().split('T')[0] === isoDate);
-        // ¡CAMBIO! Solo es "pasado" si NO es 'partial'
+        // ¡CAMBIO! Solo es "pasado" si NO está en el historial
         const isPaidOrPartial = paidDatesHistory[isoDate]; 
         return date < today && !isSelected && !isPaidOrPartial; 
     },
@@ -452,7 +486,8 @@ export function OperacionesPage() {
                         // AHORA PERMITE CLICKEAR DÍAS 'PARTIAL' (amarillo)
                         disabled={(date) => {
                             const isoDate = date.toISOString().split('T')[0];
-                            return date > today || paidDatesHistory[isoDate] === 'paid'; 
+                            // Deshabilita si es futuro O si su estado es 'paid'
+                            return date > today || paidDatesHistory[isoDate]?.status === 'paid'; 
                         }}
                         locale={es} // Muestra el calendario en español
                         month={currentMonth}
@@ -482,7 +517,7 @@ export function OperacionesPage() {
                             <span className="font-semibold text-blue-700">{selectedDates?.length || 0}</span>
                         </div>
                         <div className="flex justify-between items-center">
-                            <span className="text-sm text-gray-600">Monto Jornada (Req 3):</span>
+                            <span className="text-sm text-gray-600">Monto Jornada:</span>
                             <span className="font-semibold text-lg text-blue-700">
                                 ${montoCalculadoJornada.toLocaleString('es-AR', {minimumFractionDigits: 2})}
                             </span>
@@ -593,7 +628,7 @@ export function OperacionesPage() {
             </CardHeader>
             <CardContent>
                 {gastos.length === 0 ? ( <p className="text-sm text-gray-500 text-center py-3">No hay gastos registrados.</p> )
-                 : ( <div className="space-y-2">{gastos.map((gasto) => ( <div key={gasto.id} className="flex items-center space-x-2 dynamic-row"> <div className="flex-1"> <Input type="text" value={gasto.concepto} placeholder="Concepto" disabled={isSubmitting} onChange={(e) => handleActualizarGasto(gasto.id, 'concepto', e.target.value)} /> </div> <div className="flex-1 relative">  <Input type="number" step="0.01" value={gasto.monto} placeholder="Monto" disabled={isSubmitting} onChange={(e) => handleActualizarGasto(gasto.id, 'monto', e.target.value)} className="pl-7"/> </div> <Button variant="ghost" size="icon" onClick={() => handleEliminarGasto(gasto.id)} className="h-8 w-8 text-red-500 hover:bg-red-50" disabled={isSubmitting}> <X className="w-4 h-4" /> </Button> </div> ))} <div className="flex justify-end pt-2 border-t"> <div className="text-right text-sm"> <span className="text-gray-600">Total Gastos: </span> <span className="font-medium text-red-600">${totalGastos.toLocaleString('es-AR', {minimumFractionDigits: 2})}</span> </div> </div> </div> )}
+                 : ( <div className="space-y-2">{gastos.map((gasto) => ( <div key={gasto.id} className="flex items-center space-x-2 dynamic-row"> <div className="flex-1"> <Input type="text" value={gasto.concepto} placeholder="Concepto" disabled={isSubmitting} onChange={(e) => handleActualizarGasto(gasto.id, 'concepto', e.target.value)} /> </div> <div className="flex-1 relative"> <Input type="number" step="0.01" value={gasto.monto} placeholder="Monto" disabled={isSubmitting} onChange={(e) => handleActualizarGasto(gasto.id, 'monto', e.target.value)} className="pl-7"/> </div> <Button variant="ghost" size="icon" onClick={() => handleEliminarGasto(gasto.id)} className="h-8 w-8 text-red-500 hover:bg-red-50" disabled={isSubmitting}> <X className="w-4 h-4" /> </Button> </div> ))} <div className="flex justify-end pt-2 border-t"> <div className="text-right text-sm"> <span className="text-gray-600">Total Gastos: </span> <span className="font-medium text-red-600">${totalGastos.toLocaleString('es-AR', {minimumFractionDigits: 2})}</span> </div> </div> </div> )}
             </CardContent>
       </Card>
 
